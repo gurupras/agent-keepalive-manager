@@ -1,0 +1,12 @@
+# build outputs
+/bin/
+/dist/
+/.tools/
+node_modules/
+/web/dist/*
+!/web/dist/.gitkeep
+/hub/web/dist/*
+!/hub/web/dist/.gitkeep
+storybook-static/
+*.test
+coverage.out
