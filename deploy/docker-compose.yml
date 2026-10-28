@@ -57,7 +57,9 @@ services:
     # What sshd needs to switch to the upload user and chroot its
     # privilege-separation child; nothing else.
     cap_add: [SETUID, SETGID, SYS_CHROOT, CHOWN, AUDIT_WRITE]
-    security_opt: ["no-new-privileges:true"]
+    # No no-new-privileges: under Snap's Docker it makes every exec fail
+    # ("operation not permitted"). The capability bounding set above already
+    # limits what a setuid program could gain.
     tmpfs:
       - /run
       - /tmp
