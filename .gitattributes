@@ -1,0 +1,4 @@
+# Release keys, encrypted with git-crypt (see secrets/README.md).
+secrets/** filter=git-crypt diff=git-crypt
+secrets/README.md !filter !diff
+.gitattributes !filter !diff
