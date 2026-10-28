@@ -67,7 +67,7 @@ scripts/gen-repo-key.sh                # the repository GPG key
 
 ### The download host
 
-DNS, the droplet, Traefik, the deploy user and its ssh key: [deploy/README.md](../deploy/README.md).
+DNS, the host (nginx, the hub and its database), the upload key: [deploy/README.md](../deploy/README.md).
 
 ### The Homebrew tap
 
@@ -89,7 +89,7 @@ Create the public repository `gurupras/homebrew-tap` with a `main` branch (an em
 | `DOWNLOAD_SSH_USER` | secret | " | the deploy user, e.g. `deploy` |
 | `DOWNLOAD_SSH_KEY` | secret | " | that user's private ssh key (ed25519, no passphrase) |
 | `DOWNLOAD_SSH_KNOWN_HOSTS` | secret | " | `ssh-keyscan -t ed25519 <host>` output, checked by hand |
-| `DOWNLOAD_ROOT` | secret | " | the directory nginx serves at `/download`, e.g. `/srv/agent-keepalive/download` |
+| `DOWNLOAD_ROOT` | secret | " | the directory nginx serves at `/download`, e.g. `/home/<user>/workspace/agent-keepalive-manager/www/download` |
 | `HOMEBREW_TAP_TOKEN` | secret | Homebrew | token with contents write on `gurupras/homebrew-tap` |
 | `WINDOWS_SIGN_PFX_BASE64`, `WINDOWS_SIGN_PASSWORD` | secret | optional | Authenticode certificate (`base64 -w0 cert.pfx`) and its password; unsigned without |
 | `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD` | secret | optional | base64 `.p12` holding the Developer ID Application and Installer identities |
