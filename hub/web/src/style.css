@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-ka-scheme="dark"], [data-ka-scheme="dark"] *));
+
+/*
+ * The palette, shared in spirit with the local UI: every colour is one of
+ * these variables. The scheme is the user's choice (src/theme.ts writes
+ * <html data-ka-scheme>), else the system preference.
+ */
+:root {
+  color-scheme: light;
+  --ka-bg: #f5f6f8;
+  --ka-surface-1: #ffffff;
+  --ka-surface-2: #eef0f3;
+  --ka-text-0: #0e1420;
+  --ka-text-1: #2f3846;
+  --ka-text-2: #556070;
+  --ka-text-3: #8a94a3;
+  --ka-border: #dde1e7;
+  --ka-accent: #0f766e;
+  --ka-on-accent: #ffffff;
+  --ka-ok: #15803d;
+  --ka-danger: #c2262d;
+  --ka-info: #0b6aa2;
+  --ka-warm: #c2410c;
+  --ka-shadow: 0 1px 2px rgb(15 23 42 / 6%), 0 8px 24px rgb(15 23 42 / 8%);
+  --ka-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --ka-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+
+:root[data-ka-scheme="dark"] {
+  color-scheme: dark;
+  --ka-bg: #0b0e13;
+  --ka-surface-1: #12161d;
+  --ka-surface-2: #1a1f28;
+  --ka-text-0: #e9edf2;
+  --ka-text-1: #c6cdd6;
+  --ka-text-2: #9ba5b2;
+  --ka-text-3: #6c7684;
+  --ka-border: #262c36;
+  --ka-accent: #2dd4bf;
+  --ka-on-accent: #04211f;
+  --ka-ok: #4ade80;
+  --ka-danger: #f87171;
+  --ka-info: #5cc3f5;
+  --ka-warm: #fb923c;
+  --ka-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 40%);
+}
+
+@theme inline {
+  --color-bg: var(--ka-bg);
+  --color-surface-1: var(--ka-surface-1);
+  --color-surface-2: var(--ka-surface-2);
+  --color-text-0: var(--ka-text-0);
+  --color-text-1: var(--ka-text-1);
+  --color-text-2: var(--ka-text-2);
+  --color-text-3: var(--ka-text-3);
+  --color-line: var(--ka-border);
+  --color-accent: var(--ka-accent);
+  --color-on-accent: var(--ka-on-accent);
+  --color-ok: var(--ka-ok);
+  --color-danger: var(--ka-danger);
+  --color-info: var(--ka-info);
+  --color-warm: var(--ka-warm);
+  --shadow-card: var(--ka-shadow);
+  --font-sans: var(--ka-font);
+  --font-mono: var(--ka-mono);
+}
+
+html,
+body {
+  background: var(--ka-bg);
+  color: var(--ka-text-1);
+  font-family: var(--ka-font);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart marks take their colours from the palette, so both schemes work. */
+.chart-grid { stroke: var(--ka-border); }
+.chart-zero { stroke: var(--ka-text-3); }
+.chart-label { fill: var(--ka-text-3); font-size: 11px; font-family: var(--ka-font); }
+.chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-area { opacity: 0.14; }
+.chart-cursor { stroke: var(--ka-text-3); stroke-dasharray: 3 3; }
+.tone-net { stroke: var(--ka-accent); fill: var(--ka-accent); }
+.tone-saved { stroke: var(--ka-ok); fill: var(--ka-ok); }
+.tone-wasted { stroke: var(--ka-danger); fill: var(--ka-danger); }
+.tone-installs { stroke: var(--ka-info); fill: var(--ka-info); }
+.tone-pings { stroke: var(--ka-warm); fill: var(--ka-warm); }
+.chart-line.tone-net, .chart-line.tone-saved, .chart-line.tone-wasted,
+.chart-line.tone-installs, .chart-line.tone-pings { fill: none; }
+.chart-dot { stroke: var(--ka-surface-1); stroke-width: 2; }

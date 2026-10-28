@@ -1,0 +1,103 @@
+// The hub API (docs/metrics.md, Hub API). Every URL is relative, so the
+// dashboard works under any --base-path.
+
+export interface Summary {
+  installs: number
+  activeInstalls: number
+  saved: number
+  wasted: number
+  net: number
+  pingCost: number
+  pings: number
+  cold: number
+  returns: number
+}
+
+export interface Point {
+  day: string
+  value: number
+}
+
+export interface BreakdownRow {
+  key: string
+  installs: number
+  saved: number
+  wasted: number
+  net: number
+  pings: number
+}
+
+export type Metric = 'net' | 'saved' | 'wasted' | 'installs' | 'pings'
+export type Dimension = 'model' | 'harness' | 'version' | 'os' | 'installKind' | 'profile'
+
+export interface DayRange {
+  from: string
+  to: string
+}
+
+/** Unauthorized is thrown when the hub wants the dashboard token. */
+export class Unauthorized extends Error {
+  constructor () {
+    super('dashboard token required')
+    this.name = 'Unauthorized'
+  }
+}
+
+async function errorText (res: Response): Promise<string> {
+  try {
+    const body = await res.json() as { error?: string }
+    if (body.error) return body.error
+  } catch {
+    // not JSON
+  }
+  return `${res.status} ${res.statusText}`
+}
+
+async function get<T> (path: string, params: Record<string, string>, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${path}?${new URLSearchParams(params)}`, {
+    credentials: 'same-origin',
+    headers: { Accept: 'application/json' },
+    signal,
+  })
+  if (res.status === 401) throw new Unauthorized()
+  if (!res.ok) throw new Error(await errorText(res))
+  return await res.json() as T
+}
+
+export function summary (r: DayRange, signal?: AbortSignal): Promise<Summary> {
+  return get('v1/summary', { from: r.from, to: r.to }, signal)
+}
+
+export function series (r: DayRange, metric: Metric, signal?: AbortSignal): Promise<Point[]> {
+  return get('v1/series', { from: r.from, to: r.to, metric }, signal)
+}
+
+export function breakdown (r: DayRange, by: Dimension, signal?: AbortSignal): Promise<BreakdownRow[]> {
+  return get('v1/breakdown', { from: r.from, to: r.to, by }, signal)
+}
+
+export interface Session {
+  mode: 'public' | 'token'
+  authenticated: boolean
+}
+
+/** session reports the dashboard mode and whether this browser may read. */
+export function session (signal?: AbortSignal): Promise<Session> {
+  return get('v1/session', {}, signal)
+}
+
+/** login trades the dashboard token for a session cookie. */
+export async function login (token: string): Promise<void> {
+  const res = await fetch('v1/login', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  })
+  if (res.status === 401) throw new Unauthorized()
+  if (!res.ok) throw new Error(await errorText(res))
+}
+
+export async function logout (): Promise<void> {
+  await fetch('v1/logout', { method: 'POST', credentials: 'same-origin' })
+}

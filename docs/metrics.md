@@ -73,7 +73,10 @@ agent-keepalive-hub --listen :8080 --data-dir /var/lib/agent-keepalive-hub
 | `GET {base}/v1/summary?from=&to=` | `{installs, activeInstalls, saved, wasted, net, pingCost, pings, cold, returns}` over the days `from`..`to` (YYYY-MM-DD) |
 | `GET {base}/v1/series?from=&to=&metric=net|saved|wasted|installs|pings` | `[{day, value}]` |
 | `GET {base}/v1/breakdown?from=&to=&by=model|harness|version|os|installKind|profile` | `[{key, installs, saved, wasted, net, pings}]` |
-| `GET {base}/healthz` | `ok` |
+| `GET {base}/v1/session` | `{mode: "public"|"token", authenticated}`; needs no login (404 with `--dashboard off`) |
+| `POST {base}/v1/login` | `{"token": "…"}` → 204 with the session cookie, 401 wrong token (token mode only, else 404; 60 attempts per sender per hour) |
+| `POST {base}/v1/logout` | 204, clears the cookie |
+| `GET {base}/healthz` | `ok`, or 503 when the database is unreachable |
 | `GET {base}/` | the dashboard |
 
 A report is validated against this schema: unknown fields are refused, strings are limited to 64 characters and must match `[A-Za-z0-9._:/-]`, counts and amounts must be finite and non-negative (`netUsd` may be negative), and `day` must not be in the future or more than 30 days old.

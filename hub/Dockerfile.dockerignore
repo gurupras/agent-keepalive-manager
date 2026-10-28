@@ -1,0 +1,8 @@
+# Used by BuildKit for `docker build -f hub/Dockerfile .` (context: repo root).
+**/node_modules
+**/dist
+!hub/web/dist/.gitkeep
+.git
+bin
+storybook-static
+**/*.test
