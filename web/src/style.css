@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-ka-scheme="dark"], [data-ka-scheme="dark"] *));
+
+/*
+ * The palette: every colour the UI uses is one of these --ka-* variables
+ * (see README.md). Both blocks use :where(), so they have no specificity and
+ * an embedding page overrides them with a plain `:root { --ka-accent: … }`
+ * (both schemes) or `:root[data-ka-scheme="dark"] { … }` (dark only).
+ *
+ * The scheme is chosen in src/composables/theme.ts and written to
+ * <html data-ka-scheme>: the user's choice, else <html data-theme>, else the
+ * system preference. Before the script runs, the media query decides.
+ */
+:where(:root) {
+  color-scheme: light;
+  --ka-bg: #f5f6f8;
+  --ka-surface-1: #ffffff;
+  --ka-surface-2: #eef0f3;
+  --ka-surface-3: #e1e5ea;
+  --ka-text-0: #0e1420;
+  --ka-text-1: #2f3846;
+  --ka-text-2: #556070;
+  --ka-text-3: #8a94a3;
+  --ka-border: #dde1e7;
+  --ka-accent: #0f766e;
+  --ka-on-accent: #ffffff;
+  --ka-ok: #15803d;
+  --ka-warn: #b45309;
+  --ka-danger: #c2262d;
+  --ka-info: #0b6aa2;
+  --ka-warm: #c2410c;
+  --ka-cold: #5873a0;
+  --ka-shadow: 0 1px 2px rgb(15 23 42 / 6%), 0 8px 24px rgb(15 23 42 / 10%);
+  --ka-radius: 0.75rem;
+  --ka-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --ka-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+:where(:root[data-ka-scheme="dark"]),
+:where(:root[data-theme="dark"]:not([data-ka-scheme])) {
+  color-scheme: dark;
+  --ka-bg: #0b0e13;
+  --ka-surface-1: #12161d;
+  --ka-surface-2: #1a1f28;
+  --ka-surface-3: #272e39;
+  --ka-text-0: #e9edf2;
+  --ka-text-1: #c6cdd6;
+  --ka-text-2: #9ba5b2;
+  --ka-text-3: #6c7684;
+  --ka-border: #262c36;
+  --ka-accent: #2dd4bf;
+  --ka-on-accent: #04211f;
+  --ka-ok: #4ade80;
+  --ka-warn: #fbbf24;
+  --ka-danger: #f87171;
+  --ka-info: #5cc3f5;
+  --ka-warm: #fb923c;
+  --ka-cold: #8fa7cf;
+  --ka-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 45%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-ka-scheme]):not([data-theme="light"])) {
+    color-scheme: dark;
+    --ka-bg: #0b0e13;
+    --ka-surface-1: #12161d;
+    --ka-surface-2: #1a1f28;
+    --ka-surface-3: #272e39;
+    --ka-text-0: #e9edf2;
+    --ka-text-1: #c6cdd6;
+    --ka-text-2: #9ba5b2;
+    --ka-text-3: #6c7684;
+    --ka-border: #262c36;
+    --ka-accent: #2dd4bf;
+    --ka-on-accent: #04211f;
+    --ka-ok: #4ade80;
+    --ka-warn: #fbbf24;
+    --ka-danger: #f87171;
+    --ka-info: #5cc3f5;
+    --ka-warm: #fb923c;
+    --ka-cold: #8fa7cf;
+    --ka-shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px rgb(0 0 0 / 45%);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--ka-font);
+  --font-mono: var(--ka-mono);
+  --color-base: var(--ka-bg);
+  --color-surface: var(--ka-surface-1);
+  --color-surface-2: var(--ka-surface-2);
+  --color-surface-3: var(--ka-surface-3);
+  --color-ink: var(--ka-text-0);
+  --color-ink-1: var(--ka-text-1);
+  --color-ink-2: var(--ka-text-2);
+  --color-ink-3: var(--ka-text-3);
+  --color-line: var(--ka-border);
+  --color-accent: var(--ka-accent);
+  --color-on-accent: var(--ka-on-accent);
+  --color-accent-soft: color-mix(in oklab, var(--ka-accent) 12%, var(--ka-surface-1));
+  --color-accent-ink: color-mix(in oklab, var(--ka-accent) 80%, var(--ka-text-0));
+  --color-ok: var(--ka-ok);
+  --color-ok-soft: color-mix(in oklab, var(--ka-ok) 12%, var(--ka-surface-1));
+  --color-warn: var(--ka-warn);
+  --color-warn-soft: color-mix(in oklab, var(--ka-warn) 13%, var(--ka-surface-1));
+  --color-danger: var(--ka-danger);
+  --color-danger-soft: color-mix(in oklab, var(--ka-danger) 11%, var(--ka-surface-1));
+  --color-info: var(--ka-info);
+  --color-info-soft: color-mix(in oklab, var(--ka-info) 12%, var(--ka-surface-1));
+  --color-warm: var(--ka-warm);
+  --color-warm-soft: color-mix(in oklab, var(--ka-warm) 12%, var(--ka-surface-1));
+  --color-cold: var(--ka-cold);
+  --color-cold-soft: color-mix(in oklab, var(--ka-cold) 14%, var(--ka-surface-1));
+  --shadow-pop: var(--ka-shadow);
+  --radius-ka: var(--ka-radius);
+}
+
+@utility card {
+  @apply rounded-ka border border-line bg-surface;
+}
+
+@utility btn {
+  @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility btn-ghost {
+  @apply btn text-ink-1 hover:bg-surface-2 hover:text-ink;
+}
+
+@utility btn-outline {
+  @apply btn border border-line bg-surface text-ink-1 hover:border-ink-3 hover:text-ink;
+}
+
+@utility btn-soft {
+  @apply btn bg-accent-soft text-accent-ink hover:bg-surface-3;
+}
+
+@utility btn-primary {
+  @apply btn bg-accent text-on-accent hover:brightness-110;
+}
+
+@utility btn-danger {
+  @apply btn border border-line bg-surface text-danger hover:bg-danger-soft;
+}
+
+@utility icon-btn {
+  @apply btn-ghost size-8 p-0;
+}
+
+@utility label {
+  @apply text-xs font-medium text-ink-2;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm text-ink outline-none placeholder:text-ink-3 focus:border-accent focus:ring-2 focus:ring-accent/30 disabled:opacity-60;
+}
+
+@utility chip {
+  @apply inline-flex min-w-0 shrink-0 items-center gap-1 rounded-md bg-surface-2 px-1.5 py-px text-[11px] leading-4 text-ink-2;
+}
+
+@utility mono {
+  @apply font-mono text-[12px];
+}
+
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  @apply bg-base font-sans text-sm text-ink antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--ka-accent) 30%, transparent);
+}
+
+:focus-visible {
+  outline-color: var(--ka-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
