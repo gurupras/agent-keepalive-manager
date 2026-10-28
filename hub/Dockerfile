@@ -1,7 +1,7 @@
 # agent-keepalive-hub image. Build from the repository root:
 #   docker build -f hub/Dockerfile --build-arg VERSION=1.4.0 -t agent-keepalive-hub .
 
-FROM node:24-alpine AS web
+FROM node:26-alpine AS web
 WORKDIR /src/hub/web
 COPY hub/web/package.json hub/web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
