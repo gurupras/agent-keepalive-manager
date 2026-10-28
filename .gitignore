@@ -10,3 +10,7 @@ node_modules/
 storybook-static/
 *.test
 coverage.out
+
+# deploy secrets on the host
+/deploy/.env
+/deploy/upload/authorized_keys

@@ -361,6 +361,7 @@ jobs:
           DOWNLOAD_SSH_HOST: ${{ secrets.DOWNLOAD_SSH_HOST }}
           DOWNLOAD_SSH_USER: ${{ secrets.DOWNLOAD_SSH_USER }}
           DOWNLOAD_ROOT: ${{ secrets.DOWNLOAD_ROOT }}
+          DOWNLOAD_SSH_PORT: ${{ secrets.DOWNLOAD_SSH_PORT }}
         run: |
           if [ -z "$DOWNLOAD_SSH_HOST" ]; then
             echo "::warning::DOWNLOAD_SSH_HOST is not set: nothing is uploaded to a download host"
@@ -376,6 +377,7 @@ jobs:
             echo "DOWNLOAD_SSH_HOST=$DOWNLOAD_SSH_HOST"
             echo "DOWNLOAD_SSH_USER=$DOWNLOAD_SSH_USER"
             echo "DOWNLOAD_ROOT=$DOWNLOAD_ROOT"
+            echo "DOWNLOAD_SSH_PORT=${DOWNLOAD_SSH_PORT:-22}"
             echo "DOWNLOAD_ENABLED=true"
           } >> "$GITHUB_ENV"
       - name: Upload to the download host

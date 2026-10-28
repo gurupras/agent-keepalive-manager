@@ -1,0 +1,24 @@
+Port 2222
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+PidFile /run/sshd.pid
+
+AllowUsers upload
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+# One key per line in deploy/upload/authorized_keys; entrypoint.sh installs it.
+AuthorizedKeysFile /run/ssh/authorized_keys
+
+AllowTcpForwarding no
+AllowStreamLocalForwarding no
+AllowAgentForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitTTY no
+PermitUserRC no
+GatewayPorts no
+
+Subsystem sftp internal-sftp
+LogLevel VERBOSE

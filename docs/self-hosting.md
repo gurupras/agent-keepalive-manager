@@ -22,7 +22,7 @@ Pointing existing installs at it, without rebuilding:
 
 ## Running a download host
 
-[`deploy/`](../deploy/README.md) is the public host's setup: the hub and a Postgres database from `docker-compose.yml` on 127.0.0.1, and a host nginx site (`deploy/nginx/agent-keepalive.conf`) that serves the landing page and `/download/` (autoindex, the right MIME types, no caching of `latest.json` and repository indexes) and proxies `/hub/`. Copy it, change the host name in the nginx site, and replace `deploy/site/`.
+[`deploy/`](../deploy/README.md) is the public host's setup: the hub and a Postgres database from `docker-compose.yml` on 127.0.0.1, and a host nginx site (`deploy/nginx/agent-keepalive.conf`) that serves the landing page and `/download/` (autoindex, the right MIME types, no caching of `latest.json` and repository indexes) and proxies `/hub/`, plus an `upload` container (sshd + rsync) that is the release workflow's only way in. Copy it, change the host name in the nginx site, and replace `deploy/site/`.
 
 The release scripts need nothing on the host but ssh, rsync and a directory (`DOWNLOAD_ROOT`) that nginx serves at the profile's `DOWNLOAD_URL`, with the repositories under `<DOWNLOAD_ROOT>/repo` served at `REPO_URL` (`REPO_REMOTE_DIR` changes the subdirectory).
 

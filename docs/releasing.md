@@ -86,10 +86,11 @@ Create the public repository `gurupras/homebrew-tap` with a `main` branch (an em
 | `REPO_SIGNING_KEY` | secret | rpm signing, repositories | armored private GPG key from `scripts/gen-repo-key.sh` |
 | `REPO_SIGNING_PASSPHRASE` | secret | optional | only if the key has a passphrase (not wired into the workflow by default) |
 | `DOWNLOAD_SSH_HOST` | secret | upload, repositories, latest.json | `agent-keepalive.gurupras.me` (or the droplet's IP) |
-| `DOWNLOAD_SSH_USER` | secret | " | the deploy user, e.g. `deploy` |
-| `DOWNLOAD_SSH_KEY` | secret | " | that user's private ssh key (ed25519, no passphrase) |
-| `DOWNLOAD_SSH_KNOWN_HOSTS` | secret | " | `ssh-keyscan -t ed25519 <host>` output, checked by hand |
-| `DOWNLOAD_ROOT` | secret | " | the directory nginx serves at `/download`, e.g. `/home/<user>/workspace/agent-keepalive-manager/www/download` |
+| `DOWNLOAD_SSH_PORT` | secret | " | the upload container's port, `2222` (default 22) |
+| `DOWNLOAD_SSH_USER` | secret | " | `upload`, the upload container's only user |
+| `DOWNLOAD_SSH_KEY` | secret | " | the release key's private half (ed25519, no passphrase) |
+| `DOWNLOAD_SSH_KNOWN_HOSTS` | secret | " | `ssh-keyscan -p 2222 -t ed25519 <host>` output, checked against the fingerprint the container logs |
+| `DOWNLOAD_ROOT` | secret | " | `/download`: the download directory as the upload container sees it |
 | `HOMEBREW_TAP_TOKEN` | secret | Homebrew | token with contents write on `gurupras/homebrew-tap` |
 | `WINDOWS_SIGN_PFX_BASE64`, `WINDOWS_SIGN_PASSWORD` | secret | optional | Authenticode certificate (`base64 -w0 cert.pfx`) and its password; unsigned without |
 | `MACOS_CERTS_P12`, `MACOS_CERTS_PASSWORD` | secret | optional | base64 `.p12` holding the Developer ID Application and Installer identities |

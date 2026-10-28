@@ -43,6 +43,32 @@ services:
     ports:
       - "127.0.0.1:${HUB_PORT:-6720}:8080"
 
+  # The release workflow's ssh/rsync login. It sees only DOWNLOAD_ROOT,
+  # mounted at /download (so the DOWNLOAD_ROOT secret is /download).
+  upload:
+    build:
+      context: ./upload
+      args:
+        UPLOAD_UID: ${UPLOAD_UID:-1000}
+    image: agent-keepalive-upload:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    # What sshd needs to switch to the upload user and chroot its
+    # privilege-separation child; nothing else.
+    cap_add: [SETUID, SETGID, SYS_CHROOT, CHOWN, AUDIT_WRITE]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /run
+      - /tmp
+    volumes:
+      - ${DOWNLOAD_ROOT:?set DOWNLOAD_ROOT in .env}:/download
+      - ./upload/authorized_keys:/etc/ssh/authorized_keys.src:ro
+      - upload-keys:/etc/ssh/keys
+    ports:
+      - "${UPLOAD_PORT:-2222}:2222"
+
 volumes:
   db-data:
   hub-data:
+  upload-keys:
