@@ -6,7 +6,7 @@ One host serves three things behind an existing Traefik:
 |---|---|---|
 | `/` | `downloads` (nginx) | the landing page, `deploy/site/` |
 | `/download/` | `downloads` (nginx) | release files, `latest.json`, the apt/rpm/arch repositories (`/download/repo/`) |
-| `/hub/` | `hub` (`ghcr.io/gurupras/agent-keepalive-hub`) | the usage-report hub and its dashboard |
+| `/hub/` | `hub` (`ghcr.io/gurupras/agent-keepalive-hub`) | the usage-report hub; its dashboard asks for `HUB_DASHBOARD_TOKEN` |
 
 The release workflow writes into the download directory over ssh; nothing on this host builds anything.
 

@@ -53,7 +53,7 @@ The server binds to `127.0.0.1` only. It scans `~/.claude` and `~/.codex` (or `$
 
 ## Privacy and usage metrics
 
-The public build sends one report per day to the hub at `https://agent-keepalive.gurupras.me/hub`: counts of sessions, plans and pings, the amounts saved and spent per model, the version, OS and install kind, and a random install id generated on your machine. It never sends names, paths, project names, session ids or titles, prompts or transcript content. [docs/metrics.md](docs/metrics.md) lists every field.
+The public build sends one report per day to the maintainer's hub at `https://agent-keepalive.gurupras.me/hub`, which exists to learn whether keeping caches warm actually helps. Its dashboard is private. A report has counts of sessions, plans and pings, the amounts saved and spent per model, the version, OS and install kind, and a random install id generated on your machine. It never sends names, paths, project names, session ids or titles, prompts or transcript content. [docs/metrics.md](docs/metrics.md) lists every field.
 
 To opt out: Settings › Usage reports, or `agent-keepalive metrics off`, or `AGENT_KEEPALIVE_METRICS=off`. Off takes effect at once and deletes anything queued. `agent-keepalive metrics preview` prints the next report exactly as it would be sent. A build made from source without a profile reports nothing and never checks for updates.
 
