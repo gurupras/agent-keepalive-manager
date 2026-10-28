@@ -25,6 +25,10 @@ var (
 	updatePublicKey = ""
 	downloadURL     = ""
 	repoURL         = ""
+	// installKind is set per package build (deb, rpm, arch, brew, appimage,
+	// windows-setup, windows-portable, macos-pkg, archive). An AppImage is
+	// also recognised at run time by $APPIMAGE.
+	installKind = "dev"
 )
 
 // Profile is the build's distribution profile.
@@ -48,6 +52,8 @@ type Profile struct {
 	DownloadURL string `json:"downloadUrl,omitempty"`
 	// RepoURL is the base of the apt/rpm/arch repositories.
 	RepoURL string `json:"repoUrl,omitempty"`
+	// InstallKind is how this copy was installed, which decides how it updates.
+	InstallKind string `json:"installKind"`
 }
 
 // Current returns the profile this binary was linked with.
@@ -63,6 +69,7 @@ func Current() Profile {
 		UpdatePublicKey: updatePublicKey,
 		DownloadURL:     downloadURL,
 		RepoURL:         repoURL,
+		InstallKind:     installKind,
 	}
 }
 

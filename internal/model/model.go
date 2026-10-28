@@ -355,3 +355,51 @@ type Duration time.Duration
 
 // Std returns d as a time.Duration.
 func (d Duration) Std() time.Duration { return time.Duration(d) }
+
+// DayStats is one UTC day of activity, the input of a usage report
+// (docs/metrics.md). Implemented by scheduler.Service.
+type DayStats struct {
+	Day      string          `json:"day"` // YYYY-MM-DD, UTC
+	Sessions map[Harness]int `json:"sessions"`
+	Plans    DayPlans        `json:"plans"`
+	Pings    DayPings        `json:"pings"`
+	Outcomes []OutcomeSum    `json:"outcomes"`
+}
+
+// DayPlans counts the plans started on a day.
+type DayPlans struct {
+	Started    int     `json:"started"`
+	Indefinite int     `json:"indefinite"`
+	Hours      float64 `json:"hours"`
+}
+
+// DayPings counts the pings sent on a day, by result.
+type DayPings struct {
+	Sent     int     `json:"sent"`
+	Verified int     `json:"verified"`
+	Cold     int     `json:"cold"`
+	Failed   int     `json:"failed"`
+	CostUSD  float64 `json:"costUsd"`
+}
+
+// OutcomeSum is the ledger entries closed on a day with the same harness,
+// model, outcome and reason, summed.
+type OutcomeSum struct {
+	Harness       Harness `json:"harness"`
+	Model         string  `json:"model"`
+	Outcome       Outcome `json:"outcome"`
+	EndedBy       string  `json:"endedBy"`
+	Count         int     `json:"count"`
+	Pings         int     `json:"pings"`
+	PingCostUSD   float64 `json:"pingCostUsd"`
+	AvoidedUSD    float64 `json:"avoidedUsd"`
+	NetUSD        float64 `json:"netUsd"`
+	ContextTokens int64   `json:"contextTokens"`
+	IdleMinutes   int64   `json:"idleMinutes"`
+}
+
+// Stats provides daily activity for usage reports.
+type Stats interface {
+	// DayStats returns the activity of the UTC day that contains day.
+	DayStats(day time.Time) (DayStats, error)
+}

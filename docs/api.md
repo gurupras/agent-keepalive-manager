@@ -37,6 +37,7 @@ The token is what keeps other local users and other programs out: the server bin
 | `GET /api/update` | | `UpdateStatus` |
 | `POST /api/update/check` | | `UpdateStatus` |
 | `POST /api/update/apply` | | `UpdateStatus` (202); progress follows as `update` events |
+| `POST /api/quit` | | 202; the server shuts down (refused with 409 when supervised) |
 | `GET /api/ws?token=…` | | WebSocket upgrade, see below |
 
 `{key}` is `<harness>:<id>`, URL-encoded (`claude%3A1b2c…`). Unknown key → 404; a plan that already exists → 409; a session with `reach: "none"` → 409 with the reason.
