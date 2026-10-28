@@ -1,0 +1,8 @@
+{"timestamp":"2026-10-26T09:00:00.000Z","type":"session_meta","payload":{"id":"01a17900-0000-7000-8000-000000000005","timestamp":"2026-10-26T09:00:00.000Z","cwd":"/work/proj","source":"cli"}}
+{"timestamp":"2026-10-26T09:00:01.000Z","type":"event_msg","payload":{"type":"task_started"}}
+{"timestamp":"2026-10-26T09:00:01.010Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]}}
+{"timestamp":"2026-10-26T09:00:03.000Z","type":"token_usage_record","payload":{"response_id":"a1","usage":{"input_tokens":900,"cached_input_tokens":0,"cache_write_input_tokens":900,"output_tokens":3,"total_tokens":903}}}
+{"timestamp":"2026-10-26T09:00:03.010Z","type":"event_msg","payload":{"type":"task_complete"}}
+{"timestamp":"2026-10-26T09:30:00.000Z","type":"compacted","payload":{"message":"","replacement_history":[]}}
+{"timestamp":"2026-10-26T10:00:00.000Z","type":"session_meta","payload":{"id":"01a17900-0000-7000-8000-000000000005","timestamp":"2026-10-26T09:00:00.000Z","cwd":"/work/proj","source":"cli"}}
+{"timestamp":"2026-10-26T10:00:05.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"back again"}]}}

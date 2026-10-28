@@ -1,0 +1,8 @@
+{"timestamp": "2025-09-10T10:00:00.000Z", "type": "session_meta", "payload": {"id": "01a17900-0000-7000-8000-000000000002", "timestamp": "2025-09-10T10:00:00.000Z", "cwd": "/work/old", "source": "cli"}}
+{"timestamp": "2025-09-10T10:00:00.100Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2025-09-10T10:00:00.110Z", "type": "turn_context", "payload": {"model": "gpt-5.4"}}
+{"timestamp": "2025-09-10T10:00:00.120Z", "type": "response_item", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hello"}]}}
+{"timestamp": "2025-09-10T10:00:01.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 5000, "cached_input_tokens": 0, "output_tokens": 10, "total_tokens": 5010}, "last_token_usage": {"input_tokens": 5000, "cached_input_tokens": 0, "output_tokens": 10, "total_tokens": 5010}}}}
+{"timestamp": "2025-09-10T10:00:01.010Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 5000, "cached_input_tokens": 0, "output_tokens": 10, "total_tokens": 5010}, "last_token_usage": {"input_tokens": 5000, "cached_input_tokens": 0, "output_tokens": 10, "total_tokens": 5010}}}}
+{"timestamp": "2025-09-10T10:00:05.000Z", "type": "event_msg", "payload": {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 10100, "cached_input_tokens": 4992, "output_tokens": 15, "total_tokens": 10115}, "last_token_usage": {"input_tokens": 5100, "cached_input_tokens": 4992, "output_tokens": 5, "total_tokens": 5105}}}}
+{"timestamp": "2025-09-10T10:00:05.100Z", "type": "event_msg", "payload": {"type": "turn_aborted"}}
