@@ -14,3 +14,7 @@ coverage.out
 # deploy secrets on the host
 /deploy/.env
 /deploy/upload/authorized_keys
+
+# docs site (VitePress)
+/docs/.vitepress/cache/
+/docs/.vitepress/dist/

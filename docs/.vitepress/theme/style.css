@@ -1,0 +1,61 @@
+/* Brand colours from the icon: the flame's orange for actions, the loop's
+   teal for links and accents. */
+:root {
+  --vp-c-brand-1: #c2410c;
+  --vp-c-brand-2: #d9521a;
+  --vp-c-brand-3: #e8611f;
+  --vp-c-brand-soft: rgba(232, 97, 31, 0.14);
+
+  /* #c2410c keeps white button text above 4.5:1; the icon's #e8611f does not. */
+  --vp-button-brand-bg: #c2410c;
+  --vp-button-brand-hover-bg: #ad3a0b;
+  --vp-button-brand-active-bg: #9a3412;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #f05a28 10%, #f7931e 55%, #2f8f84 100%);
+  --vp-home-hero-image-background-image: linear-gradient(-45deg, rgba(247, 147, 30, 0.35) 40%, rgba(127, 209, 199, 0.35) 60%);
+  --vp-home-hero-image-filter: blur(56px);
+}
+
+.dark {
+  --vp-c-brand-1: #f7931e;
+  --vp-c-brand-2: #f9a440;
+  --vp-c-brand-3: #e8611f;
+  --vp-c-brand-soft: rgba(247, 147, 30, 0.16);
+  --vp-home-hero-name-background: linear-gradient(120deg, #f7931e 10%, #ffd25a 50%, #7fd1c7 100%);
+}
+
+.screenshot {
+  display: block;
+  margin: 48px auto 0;
+  max-width: 1152px;
+  padding: 0 24px;
+}
+.screenshot img {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-divider);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.12);
+}
+.home-section {
+  max-width: 1152px;
+  margin: 0 auto;
+  padding: 48px 24px 0;
+}
+.home-section h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  border: 0;
+  padding: 0;
+}
+@media (min-width: 640px) {
+  .home-section { padding: 64px 48px 0; }
+  .screenshot { padding: 0 48px; }
+}
+@media (min-width: 960px) {
+  .home-section { padding: 64px 64px 0; }
+  .screenshot { padding: 0 64px; }
+}

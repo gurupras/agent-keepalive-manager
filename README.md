@@ -2,7 +2,7 @@
 
 Keeps the provider prompt cache of your Claude Code and Codex CLI sessions warm while you step away, so coming back to a long conversation reads the cache instead of paying to write it again.
 
-![agent-keepalive UI](docs/screenshot.png)
+![agent-keepalive UI](docs/public/screenshot.png)
 
 ## Features
 

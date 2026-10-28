@@ -1,6 +1,7 @@
 # agent-keepalive build entry points.
 #
 #   make build                 local binary in bin/agent-keepalive (dev build: no profile)
+#   make docs                  the docs site in docs/.vitepress/dist (make docs-dev: live preview)
 #   PROFILE=profiles/public.env make dist
 #                              every release artifact this machine can make, in dist/
 #
@@ -17,7 +18,7 @@ GOARCH ?= $(shell go env GOARCH)
 EXE    := $(if $(filter windows,$(GOOS)),.exe,)
 UNAME_S := $(shell uname -s)
 
-.PHONY: all web hub-web ui build hub test lint fmt-check dist dist-linux linux-packages \
+.PHONY: all web hub-web ui docs docs-dev build hub test lint fmt-check dist dist-linux linux-packages \
         deb rpm arch appimage windows macos-pkg archives hub-archives checksums cross clean help
 
 all: build
@@ -33,6 +34,13 @@ hub-web:
 	cd hub/web && npm ci && npm run build
 
 ui: web hub-web
+
+## Docs site (VitePress)
+docs:
+	cd docs && npm ci && npm run build
+
+docs-dev:
+	cd docs && npm ci && npm run dev
 
 ## Go
 build:
