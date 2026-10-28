@@ -4,19 +4,23 @@ linters:
   default: standard
   settings:
     errcheck:
-      # Closing and removing on cleanup and error paths. A close that must
-      # succeed (a file about to be renamed into place) is checked by hand.
+      # Cleanup and best-effort writes whose failure changes nothing: closing
+      # and rolling back on the way out, releasing a lock at shutdown,
+      # writing a response the client may have stopped reading, reaping a
+      # detached child. A close that must succeed (a file about to be renamed
+      # into place) is checked by hand.
       exclude-functions:
-        - (io.Closer).Close
-        - (io.ReadCloser).Close
-        - (*os.File).Close
-        - (net.Conn).Close
-        - (net.Listener).Close
-        - (*archive/zip.ReadCloser).Close
-        - os.Remove
-        - os.RemoveAll
-        - os.Unsetenv
+        - (*database/sql.Tx).Rollback
+        - (*database/sql.Rows).Close
+        - (*os/exec.Cmd).Wait
+        - (*encoding/json.Encoder).Encode
+        - (*github.com/coder/websocket.Conn).CloseNow
+        - (*github.com/gurupras/agent-keepalive-manager/internal/instance.SchedulerLock).Release
+        - io.Copy
+        - io.WriteString
   exclusions:
+    # Unchecked Close, Flush, os.Remove(All), os.(Un)Setenv and fmt.Fprint*.
+    presets: [std-error-handling]
     rules:
       # Test setup fails loudly in the assertions that follow.
       - path: _test\.go
