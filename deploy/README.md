@@ -4,11 +4,11 @@ One host serves three things behind its own nginx:
 
 | Path | Served by | What |
 |---|---|---|
-| `/` | host nginx (static) | the landing page, `deploy/site/` |
+| `/` | host nginx (static) | the docs site, built from `docs/` and uploaded by the docs workflow into `SITE_ROOT` |
 | `/download/` | host nginx (static) | release files, `latest.json`, the apt/rpm/arch repositories (`/download/repo/`) |
 | `/hub/` | `hub` container, proxied | the usage-report hub; its dashboard asks for `HUB_DASHBOARD_TOKEN` |
 
-The hub stores reports in the `db` container (Postgres) and listens on `127.0.0.1:${HUB_PORT}` only. The `upload` container is the release workflow's login: an sshd that accepts one key and sees nothing of the host but the download directory. All three come from `docker-compose.yml`; nothing on this host builds a release.
+The hub stores reports in the `db` container (Postgres) and listens on `127.0.0.1:${HUB_PORT}` only. The `upload` container is the release and docs workflows' login: an sshd that accepts one key and sees nothing of the host but the download and site directories. All three come from `docker-compose.yml`; nothing on this host builds a release.
 
 ## Requirements
 
@@ -24,6 +24,7 @@ The hub stores reports in the `db` container (Postgres) and listens on `127.0.0.
   deploy/.env                            settings and secrets (not in git)
   deploy/upload/authorized_keys          the release key's public half (not in git)
 <data disk>/agent-keepalive/download/    DOWNLOAD_ROOT: release files, update feed, repositories
+<data disk>/agent-keepalive/site/        SITE_ROOT: the docs site
 ```
 
 ## First deploy
@@ -31,8 +32,8 @@ The hub stores reports in the `db` container (Postgres) and listens on `127.0.0.
 ```sh
 git clone https://github.com/gurupras/agent-keepalive-manager.git ~/workspace/agent-keepalive-manager
 cd ~/workspace/agent-keepalive-manager/deploy
-cp .env.example .env     # DOWNLOAD_ROOT, UPLOAD_UID (`id -u`), HUB_DB_PASSWORD, HUB_DASHBOARD_TOKEN
-mkdir -p "$(grep ^DOWNLOAD_ROOT= .env | cut -d= -f2)"
+cp .env.example .env     # DOWNLOAD_ROOT, SITE_ROOT, UPLOAD_UID (`id -u`), HUB_DB_PASSWORD, HUB_DASHBOARD_TOKEN
+mkdir -p "$(grep ^DOWNLOAD_ROOT= .env | cut -d= -f2)" "$(grep ^SITE_ROOT= .env | cut -d= -f2)"
 
 # The release key (make it on your own machine; the private half becomes the
 # DOWNLOAD_SSH_KEY secret). `restrict` turns off forwarding and terminals.
@@ -42,7 +43,7 @@ docker compose up -d --build
 docker compose logs upload | grep "host key"                 # the fingerprint CI will pin
 curl -fsS http://127.0.0.1:6720/hub/healthz                  # ok
 
-# nginx: fill in nginx/agent-keepalive.conf (SITE_DIR = this deploy/site,
+# nginx: fill in nginx/agent-keepalive.conf (SITE_DIR = SITE_ROOT,
 # WWW_ROOT = the directory holding download/, the certificate), link it and reload.
 sudo ln -s "$PWD/nginx/agent-keepalive.conf" /etc/nginx/sites-enabled/agent-keepalive.gurupras.me.conf
 sudo nginx -t && sudo systemctl reload nginx
@@ -50,7 +51,7 @@ curl -fsS https://agent-keepalive.gurupras.me/hub/healthz    # ok
 curl -fsSI https://agent-keepalive.gurupras.me/download/     # 200
 ```
 
-nginx must be able to read `deploy/site` and the download directory (every directory on the way needs `o+x`).
+nginx must be able to read the site and download directories (every directory on the way needs `o+x`). The site is empty until the docs workflow first runs: set the repository variable `SITE_ROOT` to `/site` (the path inside the container) and run *Actions › Docs › Run workflow*, or push a change under `docs/`.
 
 ### The release workflow's login
 
@@ -84,7 +85,8 @@ The container runs with a read-only root filesystem, every capability dropped ex
 
 ## Updating
 
-- **Landing page, nginx config or compose file**: `git pull`; `docker compose up -d --build` for container changes, then `sudo nginx -t && sudo systemctl reload nginx` after a config change.
+- **Docs site**: nothing to do here; every change to `docs/` on `main` is built and uploaded.
+- **nginx config or compose file**: `git pull`; `docker compose up -d --build` for container changes, then `sudo nginx -t && sudo systemctl reload nginx` after a config change.
 - **Hub**: each release pushes `ghcr.io/gurupras/agent-keepalive-hub:<version>` and, for stable releases, `:latest`. `docker compose pull hub && docker compose up -d hub`. Pin a version with `HUB_TAG` in `.env`.
 - **Releases**: nothing to do here; the workflow uploads them.
 

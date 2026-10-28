@@ -99,6 +99,7 @@ Create the public repository `gurupras/homebrew-tap` with a `main` branch (an em
 | `ORG_PROFILE` | secret | organisation builds | the whole content of a profile file; overrides `PROFILE_FILE` |
 | `PROFILE_FILE` | variable | organisation builds | path of the profile in the checkout; default `profiles/public.env` |
 | `HOMEBREW_TAP_REPO` | variable | optional | tap repository, default `gurupras/homebrew-tap` |
+| `SITE_ROOT` | variable | docs site | `/site`: the site directory as the upload container sees it. The docs workflow (`docs.yml`) uploads the built site there with the `DOWNLOAD_SSH_*` secrets; unset, it only builds |
 
 Every optional step logs that it was skipped and why. Missing download-host secrets skip the upload, the repositories and `latest.json` (the GitHub Release is still made).
 
