@@ -1,0 +1,15 @@
+# systemd USER unit, installed but not enabled. To run the server at login:
+#   systemctl --user enable --now agent-keepalive
+[Unit]
+Description=agent-keepalive: keeps the prompt caches of chosen agent sessions warm
+Documentation=https://github.com/gurupras/agent-keepalive-manager
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/agent-keepalive serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

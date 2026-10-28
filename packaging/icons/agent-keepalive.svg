@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- agent-keepalive: a flame (a warm cache) inside a loop arrow (kept alive). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23314a"/>
+      <stop offset="1" stop-color="#141c2b"/>
+    </linearGradient>
+    <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#f05a28"/>
+      <stop offset="0.6" stop-color="#f7931e"/>
+      <stop offset="1" stop-color="#ffd25a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <!-- loop: an almost-closed ring with an arrowhead at its end -->
+  <path d="M 128 44 A 84 84 0 1 1 52.6 91.2" fill="none" stroke="#7fd1c7"
+        stroke-width="14" stroke-linecap="round"/>
+  <path d="M 30 92 L 54 66 L 70 100 Z" fill="#7fd1c7"/>
+  <!-- flame -->
+  <path d="M 128 72
+           C 140 98 170 112 170 150
+           C 170 176 151 194 128 194
+           C 105 194 86 176 86 150
+           C 86 128 100 116 108 104
+           C 110 118 116 126 124 130
+           C 120 110 118 92 128 72 Z" fill="url(#flame)"/>
+  <path d="M 128 132
+           C 136 146 150 152 150 168
+           C 150 181 140 190 128 190
+           C 116 190 106 181 106 168
+           C 106 156 116 150 128 132 Z" fill="#ffe7a3"/>
+</svg>

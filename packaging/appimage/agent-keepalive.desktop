@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=agent-keepalive
+GenericName=Prompt cache keepalive
+Comment=Keep the prompt caches of your Claude Code and Codex sessions warm
+Exec=agent-keepalive
+Icon=agent-keepalive
+Terminal=false
+Categories=Development;Utility;
+X-AppImage-Name=agent-keepalive

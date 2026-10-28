@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>agent-keepalive @VERSION@</title>
+  <options customize="never" require-scripts="false" hostArchitectures="@ARCH@"/>
+  <domains enable_localSystem="true"/>
+  <volume-check>
+    <allowed-os-versions><os-version min="11.0"/></allowed-os-versions>
+  </volume-check>
+  <choices-outline>
+    <line choice="default"><line choice="@IDENT@"/></line>
+  </choices-outline>
+  <choice id="default"/>
+  <choice id="@IDENT@" visible="false">
+    <pkg-ref id="@IDENT@"/>
+  </choice>
+  <pkg-ref id="@IDENT@" version="@CORE_VERSION@" onConclusion="none">component.pkg</pkg-ref>
+</installer-gui-script>

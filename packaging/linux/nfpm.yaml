@@ -1,0 +1,69 @@
+# nfpm recipe for the deb, rpm and archlinux packages (https://nfpm.goreleaser.com).
+#
+# Not run directly: packaging/linux/build-packages.sh copies it into a staging
+# directory next to the files it names, fills in @VERSION@ and @ARCH@, and runs
+# nfpm there once per format and architecture, each with a binary linked for
+# that format's install kind.
+name: agent-keepalive
+arch: "@ARCH@"
+platform: linux
+# semver (deb, rpm): a pre-release (1.2.0-rc.1, 0.0.0-dev.3.gabc1234)
+# becomes 1.2.0~rc.1, which sorts below the release, so upgrading from an rc
+# to the final version works. nfpm's archlinux packager drops the pre-release
+# part, so build-packages.sh passes pacman its own spelling (1.2.0rc.1, which
+# vercmp also sorts below 1.2.0) with the schema "none".
+version: "@PKGVERSION@"
+version_schema: "@SCHEMA@"
+release: "1"
+section: devel
+priority: optional
+maintainer: "@MAINTAINER@"
+vendor: "@VENDOR@"
+homepage: "@HOMEPAGE@"
+license: Apache-2.0
+description: |
+  Keeps the provider prompt cache of chosen Claude Code and Codex CLI sessions
+  warm. A local server with a web UI discovers the sessions on this machine,
+  pings the ones you choose just before their cache expires, and keeps a
+  ledger of what that cost and saved.
+
+contents:
+  - src: ./agent-keepalive
+    dst: /usr/bin/agent-keepalive
+    file_info: { mode: 0755 }
+  - src: ./agent-keepalive.desktop
+    dst: /usr/share/applications/agent-keepalive.desktop
+    file_info: { mode: 0644 }
+  - src: ./agent-keepalive.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/agent-keepalive.svg
+    file_info: { mode: 0644 }
+  - src: ./agent-keepalive.png
+    dst: /usr/share/icons/hicolor/256x256/apps/agent-keepalive.png
+    file_info: { mode: 0644 }
+  # /usr/lib, not /lib: on Arch /lib is a symlink that pacman refuses to
+  # install through; every distribution's systemd looks in /usr/lib.
+  - src: ./agent-keepalive.service
+    dst: /usr/lib/systemd/user/agent-keepalive.service
+    file_info: { mode: 0644 }
+  # Repository trust material for postinstall (a placeholder when the build
+  # has no repository key; postinstall then registers nothing).
+  - src: ./repository-key.asc
+    dst: /usr/share/agent-keepalive/repository-key.asc
+    file_info: { mode: 0644 }
+  - src: ./repository-fingerprint
+    dst: /usr/share/agent-keepalive/repository-fingerprint
+    file_info: { mode: 0644 }
+  - src: ./LICENSE
+    dst: /usr/share/licenses/agent-keepalive/LICENSE
+    file_info: { mode: 0644 }
+
+scripts:
+  postinstall: ./postinstall.sh
+  postremove: ./postremove.sh
+
+# pacman runs post_upgrade, not post_install, on an upgrade; registration is
+# idempotent, so the same script serves both.
+archlinux:
+  packager: "@MAINTAINER@"
+  scripts:
+    postupgrade: ./postinstall.sh

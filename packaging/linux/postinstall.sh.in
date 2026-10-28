@@ -1,0 +1,111 @@
+#!/bin/sh
+# Post-install for the @KIND@ package (rendered from postinstall.sh.in by
+# packaging/linux/build-packages.sh).
+#
+# Registers the signed agent-keepalive package repository, so that the package
+# manager, not agent-keepalive, keeps this installation up to date. The
+# repository's public key ships inside this package: fetching it now would be
+# trust on first use, which is what a signed repository exists to prevent.
+#
+# Opt out with AGENT_KEEPALIVE_INSTALL_NO_REPOSITORY=1 in the installer's
+# environment, or by creating /etc/agent-keepalive/no-repository. The file is
+# checked on every install and upgrade, so the choice sticks.
+#
+# Never fails the installation: every step is best-effort.
+set -u
+
+KIND="@KIND@"
+REPO_URL="@REPO_URL@"
+KEY=/usr/share/agent-keepalive/repository-key.asc
+FPR_FILE=/usr/share/agent-keepalive/repository-fingerprint
+STATE=/var/lib/agent-keepalive
+MARK="# Installed by the agent-keepalive package"
+
+register() {
+    [ -n "$REPO_URL" ] || return 0
+    [ "${AGENT_KEEPALIVE_INSTALL_NO_REPOSITORY:-0}" = "1" ] && return 0
+    [ -e /etc/agent-keepalive/no-repository ] && return 0
+    # A build without a repository key ships a placeholder, not a key.
+    grep -q "BEGIN PGP PUBLIC KEY BLOCK" "$KEY" 2>/dev/null || return 0
+    match="${REPO_URL#*://}"
+
+    case "$KIND" in
+    deb)
+        [ -e /etc/apt/sources.list.d/agent-keepalive.sources ] && return 0
+        # Configured by hand already (for example from the website's setup
+        # lines): adding ours would list the same repository twice.
+        grep -rqs -- "$match" /etc/apt/sources.list /etc/apt/sources.list.d/ && return 0
+        install -d -m 0755 /usr/share/keyrings /etc/apt/sources.list.d
+        # apt reads an armored key from Signed-By when the name ends in .asc.
+        install -m 0644 "$KEY" /usr/share/keyrings/agent-keepalive-archive-keyring.asc
+        arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+        cat > /etc/apt/sources.list.d/agent-keepalive.sources <<EOF
+$MARK so apt can upgrade it.
+# To opt out: delete this file and create /etc/agent-keepalive/no-repository.
+Types: deb
+URIs: ${REPO_URL}/apt/current
+Suites: stable
+Components: main
+Architectures: ${arch}
+Signed-By: /usr/share/keyrings/agent-keepalive-archive-keyring.asc
+EOF
+        chmod 0644 /etc/apt/sources.list.d/agent-keepalive.sources
+        ;;
+    rpm)
+        dir=/etc/yum.repos.d
+        [ -d "$dir" ] || { [ -d /etc/zypp/repos.d ] && dir=/etc/zypp/repos.d; }
+        [ -e "${dir}/agent-keepalive.repo" ] && return 0
+        grep -rqs -- "$match" /etc/yum.repos.d/ /etc/zypp/repos.d/ && return 0
+        install -d -m 0755 /etc/pki/rpm-gpg "$dir"
+        install -m 0644 "$KEY" /etc/pki/rpm-gpg/RPM-GPG-KEY-agent-keepalive
+        cat > "${dir}/agent-keepalive.repo" <<EOF
+$MARK so dnf can upgrade it.
+# To opt out: delete this file and create /etc/agent-keepalive/no-repository.
+[agent-keepalive]
+name=agent-keepalive
+baseurl=${REPO_URL}/rpm/current/\$basearch
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-agent-keepalive
+metadata_expire=6h
+EOF
+        chmod 0644 "${dir}/agent-keepalive.repo"
+        ;;
+    arch)
+        [ -e /etc/pacman.d/agent-keepalive.conf ] && return 0
+        grep -q '^\[agent-keepalive\]' /etc/pacman.conf 2>/dev/null && return 0
+        grep -rqs -- "$match" /etc/pacman.conf /etc/pacman.d/ && return 0
+        command -v pacman-key >/dev/null 2>&1 || return 0
+        # pacman trusts a key only once it is in its keyring and locally signed.
+        pacman-key --add "$KEY" >/dev/null 2>&1 || return 0
+        for fpr in $(cat "$FPR_FILE" 2>/dev/null); do
+            pacman-key --lsign-key "$fpr" >/dev/null 2>&1 || true
+        done
+        install -d -m 0755 /etc/pacman.d "$STATE"
+        cp "$FPR_FILE" "${STATE}/pacman-key-added" 2>/dev/null || true
+        cat > /etc/pacman.d/agent-keepalive.conf <<EOF
+$MARK so pacman can upgrade it.
+# To opt out: remove the Include line for this file from /etc/pacman.conf,
+# delete this file and create /etc/agent-keepalive/no-repository.
+[agent-keepalive]
+SigLevel = Required DatabaseRequired
+Server = ${REPO_URL}/arch/current/\$arch
+EOF
+        chmod 0644 /etc/pacman.d/agent-keepalive.conf
+        # pacman.conf has no conf.d: an Include line is how a repository is added.
+        grep -q '^Include = /etc/pacman.d/agent-keepalive.conf' /etc/pacman.conf 2>/dev/null \
+            || printf '\n%s\nInclude = /etc/pacman.d/agent-keepalive.conf\n' "$MARK" >> /etc/pacman.conf
+        ;;
+    esac
+    echo "agent-keepalive: registered the package repository ${REPO_URL}, so your package manager keeps it up to date." >&2
+    echo "  To opt out: remove the repository entry and create /etc/agent-keepalive/no-repository." >&2
+}
+register
+
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications 2>/dev/null
+command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null
+
+echo "agent-keepalive: installed. Open it from your applications menu or run 'agent-keepalive open'." >&2
+echo "  To run the server at login: systemctl --user enable --now agent-keepalive" >&2
+exit 0

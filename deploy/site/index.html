@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agent-keepalive</title>
+<meta name="description" content="Keeps the prompt caches of your Claude Code and Codex CLI sessions warm while you step away.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg: #f6f4ef; --fg: #1d2433; --muted: #5b6475; --card: #ffffff; --line: #e3dfd6;
+    --accent: #e8611f; --accent2: #2f8f84; --code: #f0ede6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11161f; --fg: #e7e9ee; --muted: #9aa3b2; --card: #182030; --line: #263044;
+            --accent: #f7931e; --accent2: #7fd1c7; --code: #0d121a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 16px 64px; }
+  header { display: flex; gap: 20px; align-items: center; margin-bottom: 8px; }
+  header img { width: 72px; height: 72px; }
+  h1 { font-size: 2.2rem; margin: 0; letter-spacing: -0.02em; }
+  .tag { color: var(--muted); margin: 4px 0 0; font-size: 1.1rem; }
+  h2 { margin: 48px 0 12px; font-size: 1.35rem; }
+  h3 { margin: 24px 0 6px; font-size: 1.05rem; }
+  p, li { color: var(--fg); }
+  .muted { color: var(--muted); }
+  a { color: var(--accent2); }
+  ul.points { padding-left: 1.1em; }
+  ul.points li { margin: 6px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .card h3 { margin-top: 0; }
+  pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+        overflow-x: auto; font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 8px 0; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92em; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 0; }
+  .btn { display: inline-block; padding: 9px 16px; border-radius: 8px; text-decoration: none; font-weight: 600;
+         border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  footer { margin-top: 56px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="/favicon.svg" alt="">
+    <div>
+      <h1>agent-keepalive</h1>
+      <p class="tag">Keeps the prompt caches of your Claude Code and Codex CLI sessions warm while you step away.</p>
+    </div>
+  </header>
+
+  <div class="btns">
+    <a class="btn primary" href="#install">Install</a>
+    <a class="btn" href="/download/">All downloads</a>
+    <a class="btn" href="https://github.com/gurupras/agent-keepalive-manager">Source on GitHub</a>
+    <a class="btn" href="/hub/">Usage dashboard</a>
+  </div>
+
+  <h2>What it does</h2>
+  <ul class="points">
+    <li>A local server with a web UI finds the Claude Code and Codex sessions running on your machine. It only reads; it never types into them.</li>
+    <li>For the sessions you pick, it sends a short ping just before the provider's prompt cache expires, so coming back to a long conversation reads the cache instead of rewriting it.</li>
+    <li>A ledger shows what the pings cost and what they saved, and the UI tells you when a ping is not worth it.</li>
+    <li>It reports pseudonymous daily usage totals to the public hub. You can turn that off in one click, and the reports never contain prompts, paths, names or session ids.</li>
+  </ul>
+
+  <h2 id="install">Install</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>Debian, Ubuntu</h3>
+      <pre>curl -fsSL https://agent-keepalive.gurupras.me/download/repo/agent-keepalive-archive-keyring.gpg \
+  | sudo tee /usr/share/keyrings/agent-keepalive-archive-keyring.gpg &gt;/dev/null
+curl -fsSL https://agent-keepalive.gurupras.me/download/repo/agent-keepalive.sources \
+  | sudo tee /etc/apt/sources.list.d/agent-keepalive.sources &gt;/dev/null
+sudo apt update &amp;&amp; sudo apt install agent-keepalive</pre>
+    </div>
+    <div class="card">
+      <h3>Fedora, RHEL, openSUSE</h3>
+      <pre>sudo curl -fsSL -o /etc/yum.repos.d/agent-keepalive.repo \
+  https://agent-keepalive.gurupras.me/download/repo/agent-keepalive.repo
+sudo dnf install agent-keepalive</pre>
+    </div>
+    <div class="card">
+      <h3>Arch Linux</h3>
+      <pre>curl -fsSL -o /tmp/agent-keepalive.asc \
+  https://agent-keepalive.gurupras.me/download/repo/agent-keepalive-archive-keyring.asc
+sudo pacman-key --add /tmp/agent-keepalive.asc
+sudo pacman-key --lsign-key "$(curl -fsSL https://agent-keepalive.gurupras.me/download/repo/FINGERPRINT)"
+curl -fsSL https://agent-keepalive.gurupras.me/download/repo/pacman.conf \
+  | sudo tee -a /etc/pacman.conf &gt;/dev/null
+sudo pacman -Sy agent-keepalive</pre>
+    </div>
+    <div class="card">
+      <h3>macOS and Linux with Homebrew</h3>
+      <pre>brew install gurupras/tap/agent-keepalive</pre>
+      <p class="muted">Or the <code>.pkg</code> installer from <a href="/download/">downloads</a>, which adds an app to Applications.</p>
+    </div>
+    <div class="card">
+      <h3>Windows</h3>
+      <p>Download <code>agent-keepalive-…-setup-x64.exe</code> (or <code>arm64</code>) from <a href="/download/">downloads</a>. It installs for your user only and needs no administrator rights. A portable <code>.exe</code> is there too.</p>
+    </div>
+    <div class="card">
+      <h3>Any Linux, no install</h3>
+      <p>The <code>.AppImage</code> in <a href="/download/">downloads</a>: make it executable and run it. It updates itself.</p>
+    </div>
+  </div>
+  <p class="muted">Installing a <code>.deb</code>, <code>.rpm</code> or Arch package from the downloads page registers the same signed repository, so your package manager keeps it up to date. Each release folder has a <code>SHA256SUMS</code> file.</p>
+
+  <h2>Quick start</h2>
+  <pre>agent-keepalive open</pre>
+  <p>This starts the server in the background if it is not running and opens the UI in your browser. Pick a session, choose how long to keep it warm, and leave. The menu has <strong>Quit</strong> to stop the server.</p>
+
+  <h2>Usage reports</h2>
+  <p>The public build sends one small report per day: counts of sessions, pings and their outcomes, and the dollar amounts saved and spent, tagged with a random install id. Turn it off in Settings › Usage reports, with <code>agent-keepalive metrics off</code>, or with <code>AGENT_KEEPALIVE_METRICS=off</code>. <a href="https://github.com/gurupras/agent-keepalive-manager/blob/main/docs/metrics.md">Exactly what is sent.</a></p>
+
+  <footer>
+    agent-keepalive is open source under the Apache License 2.0.
+    <a href="https://github.com/gurupras/agent-keepalive-manager">GitHub</a> ·
+    <a href="https://github.com/gurupras/agent-keepalive-manager/issues">Issues</a> ·
+    <a href="/download/">Downloads</a>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,55 @@
+#!/bin/sh
+# Post-remove for the @KIND@ package (rendered from postremove.sh.in by
+# packaging/linux/build-packages.sh).
+#
+# On a real removal (not an upgrade), takes away the repository entry and key
+# that postinstall registered. Only files carrying postinstall's marker are
+# removed: a repository the user configured by hand stays.
+set -u
+
+KIND="@KIND@"
+MARK="# Installed by the agent-keepalive package"
+STATE=/var/lib/agent-keepalive
+
+# Is this a removal? deb: postrm remove|purge (upgrade passes "upgrade").
+# rpm: %postun 0 (an upgrade passes 1). arch: post_remove only runs on removal.
+case "$KIND" in
+deb) case "${1:-}" in remove|purge) ;; *) exit 0;; esac ;;
+rpm) [ "${1:-0}" = "0" ] || exit 0 ;;
+esac
+
+ours() { [ -f "$1" ] && grep -qF "$MARK" "$1"; }
+
+case "$KIND" in
+deb)
+    if ours /etc/apt/sources.list.d/agent-keepalive.sources; then
+        rm -f /etc/apt/sources.list.d/agent-keepalive.sources \
+              /usr/share/keyrings/agent-keepalive-archive-keyring.asc
+    fi
+    ;;
+rpm)
+    for f in /etc/yum.repos.d/agent-keepalive.repo /etc/zypp/repos.d/agent-keepalive.repo; do
+        if ours "$f"; then
+            rm -f "$f" /etc/pki/rpm-gpg/RPM-GPG-KEY-agent-keepalive
+        fi
+    done
+    ;;
+arch)
+    if ours /etc/pacman.d/agent-keepalive.conf; then
+        rm -f /etc/pacman.d/agent-keepalive.conf
+        # Drop our Include line and the marker line written just above it.
+        if [ -f /etc/pacman.conf ]; then
+            sed -i -e "\|^${MARK}\$|d" -e '\|^Include = /etc/pacman.d/agent-keepalive.conf$|d' /etc/pacman.conf
+        fi
+    fi
+    if [ -f "${STATE}/pacman-key-added" ] && command -v pacman-key >/dev/null 2>&1; then
+        for fpr in $(cat "${STATE}/pacman-key-added"); do
+            pacman-key --delete "$fpr" >/dev/null 2>&1 || true
+        done
+        rm -f "${STATE}/pacman-key-added"
+    fi
+    ;;
+esac
+rmdir "$STATE" 2>/dev/null
+command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications 2>/dev/null
+exit 0

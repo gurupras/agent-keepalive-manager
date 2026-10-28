@@ -1,0 +1,50 @@
+# Homebrew formula for agent-keepalive, rendered by packaging/homebrew/render-formula.sh
+# from the release's archives and pushed to the tap by publish-tap.sh. Edit the
+# template in the main repository, not the copy in the tap.
+class AgentKeepalive < Formula
+  desc "Keeps the prompt caches of chosen Claude Code and Codex sessions warm"
+  homepage "@HOMEPAGE@"
+  version "@VERSION@"
+  license "Apache-2.0"
+
+  on_macos do
+    on_arm do
+      url "@BASE_URL@/agent-keepalive_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "@BASE_URL@/agent-keepalive_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "@BASE_URL@/agent-keepalive_@VERSION@_linux_arm64.tar.gz"
+      sha256 "@SHA_LINUX_ARM64@"
+    end
+    on_intel do
+      url "@BASE_URL@/agent-keepalive_@VERSION@_linux_amd64.tar.gz"
+      sha256 "@SHA_LINUX_AMD64@"
+    end
+  end
+
+  def install
+    bin.install "agent-keepalive"
+    # The archive's binary is linked as an "archive" install, which would
+    # update itself. This file tells it that brew owns it: it then shows
+    # `brew upgrade agent-keepalive` instead of updating in place.
+    (libexec/"install-kind").write("brew\n")
+  end
+
+  service do
+    run [opt_bin/"agent-keepalive", "serve"]
+    keep_alive true
+    log_path var/"log/agent-keepalive.log"
+    error_log_path var/"log/agent-keepalive.log"
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/agent-keepalive version")
+  end
+end
