@@ -157,6 +157,11 @@ func TestDetectInstall(t *testing.T) {
 	os.MkdirAll(libexec, 0o755)
 	exe := filepath.Join(bin, "agent-keepalive")
 	os.WriteFile(exe, []byte("x"), 0o755)
+	// The temp dir itself can sit behind a symlink (macOS /var) or a short
+	// name (Windows); detectInstall reports resolved paths.
+	if r, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = r
+	}
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	none := env(nil)
 
@@ -465,7 +470,7 @@ func TestUpdaterArchiveApply(t *testing.T) {
 	if b, _ := os.ReadFile(target); string(b) != "NEW BINARY" {
 		t.Fatalf("target %q", b)
 	}
-	if fi, _ := os.Stat(target); fi.Mode().Perm()&0o100 == 0 {
+	if fi, _ := os.Stat(target); runtime.GOOS != "windows" && fi.Mode().Perm()&0o100 == 0 {
 		t.Fatal("not executable")
 	}
 	left, _ := filepath.Glob(filepath.Join(dir, tempPrefix+"*"))

@@ -17,13 +17,15 @@ import (
 func TestDefaultDataDir(t *testing.T) {
 	home := func() (string, error) { return "/home/u", nil }
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	// Absolute on the host running the test ("C:\\xdg" on Windows).
+	xdg, _ := filepath.Abs("/xdg")
 	cases := []struct {
 		goos string
 		env  map[string]string
 		want string
 	}{
 		{"linux", nil, filepath.Join("/home/u", ".local", "state", Name)},
-		{"linux", map[string]string{"XDG_STATE_HOME": "/xdg"}, filepath.Join("/xdg", Name)},
+		{"linux", map[string]string{"XDG_STATE_HOME": xdg}, filepath.Join(xdg, Name)},
 		{"linux", map[string]string{"XDG_STATE_HOME": "relative"}, filepath.Join("/home/u", ".local", "state", Name)},
 		{"darwin", nil, filepath.Join("/home/u", "Library", "Application Support", Name)},
 		{"windows", map[string]string{"LOCALAPPDATA": "/lad"}, filepath.Join("/lad", Name)},

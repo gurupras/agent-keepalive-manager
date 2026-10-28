@@ -446,6 +446,9 @@ func (u *Updater) install(ctx context.Context, art Artifact) error {
 			return fmt.Errorf("replace %s: %w", u.in.Target, err)
 		}
 		u.opts.Log.Info("update installed", "version", u.Status().Latest.Version)
+		// Before Restart: it may end this process before the defers run.
+		os.Remove(dl)
+		os.Remove(src)
 		if u.opts.Restart == nil {
 			u.setState(apitypes.UpdateReady, "")
 			return nil

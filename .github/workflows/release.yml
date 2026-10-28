@@ -180,7 +180,12 @@ jobs:
           security import "$RUNNER_TEMP/certs.p12" -k "$kc" -P "$MACOS_CERTS_PASSWORD" \
             -T /usr/bin/codesign -T /usr/bin/productbuild -T /usr/bin/pkgbuild
           security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
-          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          # Add ours to the search list, keeping the existing keychains.
+          # (A read loop, not mapfile: macOS runs bash 3.2.)
+          keychains=()
+          while IFS= read -r k; do keychains+=("$k"); done \
+            < <(security list-keychains -d user | tr -d '"' | sed 's/^[[:space:]]*//')
+          security list-keychains -d user -s "$kc" "${keychains[@]}"
           rm -f "$RUNNER_TEMP/certs.p12"
           echo "MACOS_KEYCHAIN=$kc" >> "$GITHUB_ENV"
       - name: Build the .pkg

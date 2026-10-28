@@ -1,0 +1,27 @@
+version: "2"
+
+linters:
+  default: standard
+  settings:
+    errcheck:
+      # Closing and removing on cleanup and error paths. A close that must
+      # succeed (a file about to be renamed into place) is checked by hand.
+      exclude-functions:
+        - (io.Closer).Close
+        - (io.ReadCloser).Close
+        - (*os.File).Close
+        - (net.Conn).Close
+        - (net.Listener).Close
+        - (*archive/zip.ReadCloser).Close
+        - os.Remove
+        - os.RemoveAll
+        - os.Unsetenv
+  exclusions:
+    rules:
+      # Test setup fails loudly in the assertions that follow.
+      - path: _test\.go
+        linters: [errcheck]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

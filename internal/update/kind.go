@@ -69,6 +69,9 @@ func detectInstall(linked, exe string, getenv func(string) string) Install {
 	// counts when this binary is the one inside the AppImage's mount.
 	if img := getenv("APPIMAGE"); img != "" {
 		dir := getenv("APPDIR")
+		if r, err := filepath.EvalSymlinks(dir); dir != "" && err == nil {
+			dir = r // compared with the resolved executable
+		}
 		inside := dir != "" && within(resolved, dir)
 		if inside || (in.Kind == KindAppImage && dir == "") {
 			in.Kind, in.Target = KindAppImage, img

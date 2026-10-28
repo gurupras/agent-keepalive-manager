@@ -344,7 +344,7 @@ func (r *Reporter) catchUp(now time.Time) {
 	// Reports the hub would refuse as too old.
 	for _, day := range r.q.days() {
 		if day < dayOf(oldest) {
-			r.q.remove(day)
+			_ = r.q.remove(day) // best effort: a leftover is sent again (the hub keeps one per day) or expires
 		}
 	}
 	if built {
@@ -444,7 +444,7 @@ func (r *Reporter) sendDue(parent context.Context) (retryAt time.Time) {
 		r.mu.Unlock()
 		if err != nil {
 			r.mu.Lock()
-			r.q.remove(day)
+			_ = r.q.remove(day) // best effort: a leftover is sent again (the hub keeps one per day) or expires
 			r.mu.Unlock()
 			continue
 		}
@@ -458,12 +458,12 @@ func (r *Reporter) sendDue(parent context.Context) (retryAt time.Time) {
 		}
 		switch {
 		case res.ok:
-			r.q.remove(day)
+			_ = r.q.remove(day) // best effort: a leftover is sent again (the hub keeps one per day) or expires
 			r.st.LastSent, r.st.LastError = r.opts.now(), ""
 			r.attempts, r.nextTry = 0, time.Time{}
 			r.opts.Log.Info("metrics: report sent", "day", day)
 		case res.drop:
-			r.q.remove(day)
+			_ = r.q.remove(day) // best effort: a leftover is sent again (the hub keeps one per day) or expires
 			r.attempts, r.nextTry = 0, time.Time{}
 			r.st.LastError = fmt.Sprintf("the hub refused the report for %s: %s", day, res.err)
 			r.opts.Log.Warn("metrics: report refused; dropped", "day", day, "err", res.err)

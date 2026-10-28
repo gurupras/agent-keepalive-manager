@@ -270,8 +270,9 @@ func TestPing(t *testing.T) {
 	if id, ok := model.ParsePing(m.Message.Content); !ok || id != "p42" {
 		t.Errorf("marker lost: %q", m.Message.Content)
 	}
+	// Windows has no Unix modes (a directory always reads 0777).
 	fi, err := os.Stat(filepath.Join(dir, "sink"))
-	if err != nil || fi.Mode().Perm() != 0o700 {
+	if err != nil || (runtime.GOOS != "windows" && fi.Mode().Perm() != 0o700) {
 		t.Errorf("sink dir mode %v %v", fi.Mode(), err)
 	}
 }
