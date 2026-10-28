@@ -23,8 +23,11 @@ sign_rpm() {
     --addsign "$1" >/dev/null
   # Old rpm prints "Signature : RSA/SHA256, …, Key ID …"; rpm 6 an
   # OpenPGP "…signature, key ID …: NOKEY" warning. Unsigned prints neither.
-  rpm -qpi "$1" 2>&1 | grep -qi 'key id' \
-    || rdie "rpm: $(basename "$1") is unsigned after rpmsign"
+  # Read it whole first: grep -q stopping at the warning would kill rpm with
+  # SIGPIPE, which pipefail reports as a failure.
+  local info
+  info="$(rpm -qpi "$1" 2>&1)" || rdie "rpm: cannot read $(basename "$1")"
+  grep -qi 'key id' <<<"$info" || rdie "rpm: $(basename "$1") is unsigned after rpmsign"
 }
 
 case "${1:-}" in
