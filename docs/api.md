@@ -12,7 +12,12 @@ Every `/api/` route except `GET /api/health` requires the install's API token:
 - The server writes it into the UI page it serves as `<meta name="ka-token" content="…">`. The UI reads the meta tag and sends it as the `X-Keepalive-Token` header on every request, and as the `token` query parameter when it opens the WebSocket.
 - A missing or wrong token answers 401.
 
-The token is what keeps other local users and other programs out: the server binds 127.0.0.1, and a cross-origin page cannot read the page that carries the token. The loopback `Host` check, the same-`Origin` check on state changes and the WebSocket upgrade, and the `Sec-Fetch-Site: cross-site` refusal still apply on top (see architecture.md, Security). Request bodies must be `application/json`.
+The token is what keeps other local users and other programs out: the server binds 127.0.0.1, and a cross-origin page cannot read the page that carries the token. The loopback `Host` check, the same-`Origin` check on state changes and the WebSocket upgrade, and the `Sec-Fetch-Site: cross-site` refusal still apply on top (see architecture.md, Security):
+
+- Every `POST`, `PUT`, `PATCH` and `DELETE` must carry `Content-Type: application/json`, also when it has no body (ping, quit, update/check, `DELETE …/plan`); anything else answers 415. A cross-site page can only send such a request after a CORS preflight, and none is granted.
+- `Sec-Fetch-Site: cross-site` is refused everywhere except a top-level navigation to the UI page itself (so a link to the UI works; the linking page cannot read it). State changes and the WebSocket also refuse `same-site`.
+- The page is served with `Cache-Control: no-store`, because it carries the token.
+- Framing: the CSP has `frame-ancestors 'self'` (plus `X-Frame-Options: SAMEORIGIN`) by default. An embedder that frames the UI from another origin passes `--frame-ancestors "<sources>"` (or `$AGENT_KEEPALIVE_FRAME_ANCESTORS`), for example `--frame-ancestors "'self' http://*.localhost:*"`; `X-Frame-Options` is then omitted.
 
 ## Routes
 
@@ -34,6 +39,7 @@ The token is what keeps other local users and other programs out: the server bin
 | `GET /api/metrics` | | `MetricsStatus` |
 | `PUT /api/metrics` | `{enabled: bool}` | `MetricsStatus`; 403 when locked |
 | `GET /api/metrics/preview` | | the next report exactly as it would be sent (docs/metrics.md) |
+| `POST /api/metrics/reset-id` | | `MetricsStatus` with a new `installId` |
 | `GET /api/update` | | `UpdateStatus` |
 | `POST /api/update/check` | | `UpdateStatus` |
 | `POST /api/update/apply` | | `UpdateStatus` (202); progress follows as `update` events |
