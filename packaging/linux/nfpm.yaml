@@ -20,7 +20,7 @@ priority: optional
 maintainer: "@MAINTAINER@"
 vendor: "@VENDOR@"
 homepage: "@HOMEPAGE@"
-license: Apache-2.0
+license: MIT
 description: |
   Keeps the provider prompt cache of chosen Claude Code and Codex CLI sessions
   warm. A local server with a web UI discovers the sessions on this machine,

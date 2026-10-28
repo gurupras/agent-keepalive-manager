@@ -5,7 +5,7 @@ class AgentKeepalive < Formula
   desc "Keeps the prompt caches of chosen Claude Code and Codex sessions warm"
   homepage "@HOMEPAGE@"
   version "@VERSION@"
-  license "Apache-2.0"
+  license "MIT"
 
   on_macos do
     on_arm do

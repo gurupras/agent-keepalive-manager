@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Local web UI for agent-keepalive",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },

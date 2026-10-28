@@ -34,4 +34,4 @@ CI runs the same checks on Linux, macOS and Windows, plus shellcheck and actionl
 
 ## Licence
 
-By contributing you agree that your contribution is licensed under the Apache License 2.0, like the rest of the project.
+By contributing you agree that your contribution is licensed under the MIT License, like the rest of the project.

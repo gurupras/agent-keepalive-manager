@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Dashboard of agent-keepalive-hub",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "engines": {
     "node": ">=22"
   },

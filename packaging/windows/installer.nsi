@@ -57,7 +57,7 @@ VIAddVersionKey "ProductName" "${APPNAME}"
 VIAddVersionKey "FileDescription" "${APPNAME} setup"
 VIAddVersionKey "FileVersion" "${VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" "Apache-2.0"
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 Guru Prasad Srinivasa. MIT License."
 
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"
