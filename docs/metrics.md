@@ -44,7 +44,7 @@ One report per install per UTC day, sent once that day is over (and at start-up 
 | `pings` | Keepalive pings sent that day, by result, and what they cost. |
 | `outcomes` | Ledger entries closed that day, summed per harness, model, outcome and reason. `contextTokens` and `idleMinutes` are sums. |
 
-**Never sent:** names, user names, e-mail, host names, IP addresses chosen by us, paths, project names, session titles or ids, prompts, transcript content, models' answers, settings other than the above. The hub does not store the sender's IP address.
+**Never sent:** names, user names, e-mail, host names, IP addresses chosen by us, paths, project names, session titles or ids, prompts, transcript content, models' answers, settings other than the above. The hub does not store the sender's IP address. To limit new installs per network (below) it keeps, for the current UTC day only, an HMAC of the sender's /24 (IPv4) or /64 (IPv6) under a random salt that is replaced, and the old one deleted, every day; it cannot be turned back into an address or matched across days.
 
 ## The hub
 
@@ -64,19 +64,24 @@ agent-keepalive-hub --listen :8080 --data-dir /var/lib/agent-keepalive-hub
 | `--dashboard` / `HUB_DASHBOARD` | `public` | `public`, `token` (needs `HUB_DASHBOARD_TOKEN`; the dashboard asks for it) or `off` |
 | `--trust-proxy` / `HUB_TRUST_PROXY` | `false` | use `X-Forwarded-For` for rate limiting (never stored) |
 | `--retention-days` / `HUB_RETENTION_DAYS` | `730` | reports older than this are deleted |
+| `--max-daily-usd` / `HUB_MAX_DAILY_USD` | `2000` | refuse (400) a report whose `avoidedUsd` adds up to more than this; `0` is no cap |
+| `--new-installs-per-network` / `HUB_NEW_INSTALLS_PER_NETWORK` | `5` | installs never seen before that one /24 or /64 may add per UTC day; more get 429 until the next UTC midnight, and their client retries then; `0` is no limit |
+| `--established-days` / `HUB_ESTABLISHED_DAYS` | `3` | the dashboard counts an install once it has sent this many daily reports (`installs=all` counts every one); `0` or `1` counts all |
 
 ### Hub API
 
 | Method & path | |
 |---|---|
-| `POST {base}/v1/reports` | one report (body above, ≤ 64 KiB). 202 stored, 200 duplicate (same `installId` + `day`: the newer one replaces it), 400 invalid, 401 bad token, 429 rate limited (60 reports per sender per hour). |
-| `GET {base}/v1/summary?from=&to=` | `{installs, activeInstalls, saved, wasted, net, pingCost, pings, cold, returns}` over the days `from`..`to` (YYYY-MM-DD) |
-| `GET {base}/v1/series?from=&to=&metric=net|saved|wasted|installs|pings` | `[{day, value}]` |
-| `GET {base}/v1/breakdown?from=&to=&by=model|harness|version|os|installKind|profile` | `[{key, installs, saved, wasted, net, pings}]` |
+| `POST {base}/v1/reports` | one report (body above, ≤ 64 KiB). 202 stored, 200 duplicate (same `installId` + `day`: the newer one replaces it), 400 invalid, 401 bad token, 429 rate limited (60 reports per sender per hour, or the network's new installs for the day are used up), with `Retry-After`. |
+| `GET {base}/v1/summary?from=&to=&installs=` | `{installs, activeInstalls, saved, wasted, net, pingCost, pings, cold, returns, pending, medianNet, trimmedNet, trimmed, topShare, establishedDays}` over the days `from`..`to` (YYYY-MM-DD). `pending` is the installs not counted yet, `medianNet` the median install's net, `trimmedNet` the net without the `trimmed` installs (1%, rounded down) furthest from zero, `topShare` the largest install's share of the summed \|net\| |
+| `GET {base}/v1/series?from=&to=&installs=&metric=net|saved|wasted|installs|pings` | `[{day, value}]` |
+| `GET {base}/v1/breakdown?from=&to=&installs=&by=model|harness|version|os|installKind|profile` | `[{key, installs, saved, wasted, net, pings}]` |
 | `GET {base}/v1/session` | `{mode: "public"|"token", authenticated}`; needs no login (404 with `--dashboard off`) |
 | `POST {base}/v1/login` | `{"token": "…"}` → 204 with the session cookie, 401 wrong token (token mode only, else 404; 60 attempts per sender per hour) |
 | `POST {base}/v1/logout` | 204, clears the cookie |
 | `GET {base}/healthz` | `ok`, or 503 when the database is unreachable |
 | `GET {base}/` | the dashboard |
 
-A report is validated against this schema: unknown fields are refused, strings are limited to 64 characters and must match `[A-Za-z0-9._:/-]`, counts and amounts must be finite and non-negative (`netUsd` may be negative), and `day` must not be in the future or more than 30 days old.
+A report is validated against this schema: unknown fields are refused, strings are limited to 64 characters and must match `[A-Za-z0-9._:/-]`, counts and amounts must be finite and non-negative (`netUsd` may be negative), and `day` must not be in the future or more than 30 days old. `installs` is `established` (the default: only installs with `--established-days` reports) or `all`.
+
+The numbers must also be possible for one install in one day, or the report is refused with 400 (and the client drops it): `version` is a release (`1.2.3`, `1.2.3-rc.1`) or `dev`; `plans.indefinite` ≤ `plans.started` and `plans.hours` ≤ 168 per plan; `pings.verified`, `pings.cold` and `pings.verified + pings.failed` ≤ `pings.sent`; `pings.sent` ≤ 1440 per session seen (one a minute); at most $25 per ping. Each outcome has `count` ≥ 1, at most 10M `contextTokens` per entry, an `avoidedUsd` no larger than writing its context at $100 per 1M tokens, a `pingCostUsd` of at most $25 per ping, and `netUsd` = `avoidedUsd` − `pingCostUsd` (to within $0.01).

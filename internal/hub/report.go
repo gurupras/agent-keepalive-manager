@@ -177,7 +177,89 @@ func (r *Report) Validate(now time.Time) error {
 			return err
 		}
 	}
+	return r.checkPlausible()
+}
+
+// Plausibility bounds: the most any real install can report for one day,
+// with wide headroom, so that only an impossible report is refused (and a
+// refused report is dropped by the sender, not retried).
+const (
+	// maxPlanHours is the app's largest "Longest plan" setting.
+	maxPlanHours = 168
+	// maxPingsPerSession is one ping a minute, the shortest interval.
+	maxPingsPerSession = 24 * 60
+	// maxEntryContext is one ledger entry's context, in tokens; the largest
+	// context windows today are a tenth of it.
+	maxEntryContext = 10_000_000
+	// maxWritePerMTok is a cache-write price, USD per 1M tokens, above any
+	// list price.
+	maxWritePerMTok = 100.0
+	// maxPingCost is one ping, USD: a cache read of maxEntryContext at a
+	// price above any list read price.
+	maxPingCost = 25.0
+	// netTolerance absorbs the sender's rounding of each sum to 1e-6.
+	netTolerance = 0.01
+)
+
+var versionRe = regexp.MustCompile(`^(dev|[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?)$`)
+
+// checkPlausible refuses a report whose numbers contradict each other or
+// exceed what one install can do in a day (docs/metrics.md, The hub).
+func (r *Report) checkPlausible() error {
+	if !versionRe.MatchString(r.Version) {
+		return invalid("version: must be a release version (1.2.3, 1.2.3-rc.1) or dev")
+	}
+	p := r.Plans
+	if p.Indefinite > p.Started {
+		return invalid("plans.indefinite: more than plans.started")
+	}
+	if p.Hours > float64(p.Started)*maxPlanHours {
+		return invalid("plans.hours: more than %d per plan started", maxPlanHours)
+	}
+	g := r.Pings
+	switch {
+	case g.Verified > g.Sent:
+		return invalid("pings.verified: more than pings.sent")
+	case g.Cold > g.Sent:
+		return invalid("pings.cold: more than pings.sent")
+	case g.Failed > g.Sent-g.Verified:
+		return invalid("pings.failed: more than the pings sent and not verified")
+	}
+	sessions := 0
+	for _, n := range r.Sessions {
+		sessions += n
+	}
+	if int64(g.Sent) > int64(max(sessions, 1))*maxPingsPerSession {
+		return invalid("pings.sent: more than %d per session seen", maxPingsPerSession)
+	}
+	if g.CostUSD > float64(g.Sent)*maxPingCost {
+		return invalid("pings.costUsd: more than $%v per ping", maxPingCost)
+	}
+	for i, o := range r.Outcomes {
+		pre := fmt.Sprintf("outcomes[%d].", i)
+		switch {
+		case o.Count < 1:
+			return invalid("%scount: must be at least 1", pre)
+		case o.ContextTokens > int64(o.Count)*maxEntryContext:
+			return invalid("%scontextTokens: more than %d per entry", pre, maxEntryContext)
+		case o.AvoidedUSD > float64(o.ContextTokens)*maxWritePerMTok/1e6+netTolerance:
+			return invalid("%savoidedUsd: more than re-writing its context could cost", pre)
+		case o.PingCostUSD > float64(o.Pings)*maxPingCost+netTolerance:
+			return invalid("%spingCostUsd: more than $%v per ping", pre, maxPingCost)
+		case math.Abs(o.NetUSD-(o.AvoidedUSD-o.PingCostUSD)) > netTolerance:
+			return invalid("%snetUsd: must be avoidedUsd minus pingCostUsd", pre)
+		}
+	}
 	return nil
+}
+
+// AvoidedUSD is the total re-cache cost the report says was avoided.
+func (r *Report) AvoidedUSD() float64 {
+	var t float64
+	for _, o := range r.Outcomes {
+		t += o.AvoidedUSD
+	}
+	return t
 }
 
 func checkDay(day string, now time.Time) error {

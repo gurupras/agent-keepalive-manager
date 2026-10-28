@@ -11,6 +11,15 @@ export interface Summary {
   pings: number
   cold: number
   returns: number
+  /** Installs in the range not counted yet: fewer than establishedDays reports. */
+  pending: number
+  medianNet: number
+  /** net without the `trimmed` installs (1%, rounded down) furthest from zero. */
+  trimmedNet: number
+  trimmed: number
+  /** The largest install's share of the summed |net|, 0–1. */
+  topShare: number
+  establishedDays: number
 }
 
 export interface Point {
@@ -34,6 +43,9 @@ export interface DayRange {
   from: string
   to: string
 }
+
+/** Which installs count: those with establishedDays reports, or every one. */
+export type Installs = 'established' | 'all'
 
 /** Unauthorized is thrown when the hub wants the dashboard token. */
 export class Unauthorized extends Error {
@@ -64,16 +76,16 @@ async function get<T> (path: string, params: Record<string, string>, signal?: Ab
   return await res.json() as T
 }
 
-export function summary (r: DayRange, signal?: AbortSignal): Promise<Summary> {
-  return get('v1/summary', { from: r.from, to: r.to }, signal)
+export function summary (r: DayRange, installs: Installs, signal?: AbortSignal): Promise<Summary> {
+  return get('v1/summary', { from: r.from, to: r.to, installs }, signal)
 }
 
-export function series (r: DayRange, metric: Metric, signal?: AbortSignal): Promise<Point[]> {
-  return get('v1/series', { from: r.from, to: r.to, metric }, signal)
+export function series (r: DayRange, installs: Installs, metric: Metric, signal?: AbortSignal): Promise<Point[]> {
+  return get('v1/series', { from: r.from, to: r.to, installs, metric }, signal)
 }
 
-export function breakdown (r: DayRange, by: Dimension, signal?: AbortSignal): Promise<BreakdownRow[]> {
-  return get('v1/breakdown', { from: r.from, to: r.to, by }, signal)
+export function breakdown (r: DayRange, installs: Installs, by: Dimension, signal?: AbortSignal): Promise<BreakdownRow[]> {
+  return get('v1/breakdown', { from: r.from, to: r.to, installs, by }, signal)
 }
 
 export interface Session {

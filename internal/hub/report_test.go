@@ -99,8 +99,12 @@ func TestDecodeReportRules(t *testing.T) {
 		{name: "arch missing", mutate: func(r map[string]any) { delete(r, "arch") }},
 		{name: "profile empty", mutate: func(r map[string]any) { r["profile"] = "" }, ok: true},
 		{name: "installKind empty", mutate: func(r map[string]any) { r["installKind"] = "" }, ok: true},
-		{name: "version 64 chars", mutate: func(r map[string]any) { r["version"] = long[:64] }, ok: true},
-		{name: "version 65 chars", mutate: func(r map[string]any) { r["version"] = long }},
+		{name: "version 64 chars", mutate: func(r map[string]any) { r["version"] = "1.4.0-" + long[:58] }, ok: true},
+		{name: "version 65 chars", mutate: func(r map[string]any) { r["version"] = "1.4.0-" + long[:59] }},
+		{name: "version dev", mutate: func(r map[string]any) { r["version"] = "dev" }, ok: true},
+		{name: "version rc", mutate: func(r map[string]any) { r["version"] = "0.1.0-rc.1" }, ok: true},
+		{name: "version git describe", mutate: func(r map[string]any) { r["version"] = "0.0.0-dev.24.gc9771de" }, ok: true},
+		{name: "version not semver", mutate: func(r map[string]any) { r["version"] = "latest" }},
 		{name: "version space", mutate: func(r map[string]any) { r["version"] = "1.4 beta" }},
 		{name: "version plus", mutate: func(r map[string]any) { r["version"] = "1.4.0+dirty" }},
 		{name: "os unicode", mutate: func(r map[string]any) { r["os"] = "linüx" }},
@@ -140,7 +144,10 @@ func TestDecodeReportRules(t *testing.T) {
 		{name: "outcome model empty", mutate: func(r map[string]any) { outcome0(r)["model"] = "" }, ok: true},
 		{name: "outcome model long", mutate: func(r map[string]any) { outcome0(r)["model"] = long }},
 		{name: "outcome model bad", mutate: func(r map[string]any) { outcome0(r)["model"] = "claude opus" }},
-		{name: "outcome wasted", mutate: func(r map[string]any) { outcome0(r)["outcome"] = "wasted"; outcome0(r)["netUsd"] = -0.41 }, ok: true},
+		{name: "outcome wasted", mutate: func(r map[string]any) {
+			o := outcome0(r)
+			o["outcome"], o["avoidedUsd"], o["netUsd"] = "wasted", 0, -0.41
+		}, ok: true},
 		{name: "outcome unknown", mutate: func(r map[string]any) { outcome0(r)["outcome"] = "maybe" }},
 		{name: "outcome missing", mutate: func(r map[string]any) { delete(outcome0(r), "outcome") }},
 		{name: "outcome endedBy missing", mutate: func(r map[string]any) { delete(outcome0(r), "endedBy") }},
@@ -151,8 +158,34 @@ func TestDecodeReportRules(t *testing.T) {
 		{name: "outcome idleMinutes negative", mutate: func(r map[string]any) { outcome0(r)["idleMinutes"] = -1 }},
 		{name: "outcome pingCostUsd negative", mutate: func(r map[string]any) { outcome0(r)["pingCostUsd"] = -1 }},
 		{name: "outcome avoidedUsd negative", mutate: func(r map[string]any) { outcome0(r)["avoidedUsd"] = -1 }},
-		{name: "outcome netUsd negative", mutate: func(r map[string]any) { outcome0(r)["netUsd"] = -3.5 }, ok: true},
+		{name: "outcome netUsd negative", mutate: func(r map[string]any) {
+			o := outcome0(r)
+			o["pingCostUsd"], o["avoidedUsd"], o["netUsd"] = 4.0, 0.5, -3.5
+		}, ok: true},
 		{name: "outcome netUsd too large", mutate: func(r map[string]any) { outcome0(r)["netUsd"] = -1e10 }},
+		// plausibility
+		{name: "indefinite over started", mutate: func(r map[string]any) { r["plans"] = map[string]any{"started": 1, "indefinite": 2} }},
+		{name: "plan hours at cap", mutate: func(r map[string]any) { r["plans"] = map[string]any{"started": 2, "hours": 336} }, ok: true},
+		{name: "plan hours over cap", mutate: func(r map[string]any) { r["plans"] = map[string]any{"started": 2, "hours": 337} }},
+		{name: "verified over sent", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 2, "verified": 3} }},
+		{name: "cold over sent", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 2, "cold": 3} }},
+		{name: "verified plus failed over sent", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 2, "verified": 2, "failed": 1} }},
+		{name: "pings per session at cap", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 5 * 1440} }, ok: true},
+		{name: "pings per session over cap", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 5*1440 + 1} }},
+		{name: "pings without sessions", mutate: func(r map[string]any) { delete(r, "sessions"); r["pings"] = map[string]any{"sent": 1441} }},
+		{name: "ping cost over cap", mutate: func(r map[string]any) { r["pings"] = map[string]any{"sent": 1, "costUsd": 25.01} }},
+		{name: "outcome count zero", mutate: func(r map[string]any) { outcome0(r)["count"] = 0 }},
+		{name: "outcome context over cap", mutate: func(r map[string]any) { outcome0(r)["contextTokens"] = 20_000_001 }},
+		{name: "outcome avoided over context", mutate: func(r map[string]any) {
+			o := outcome0(r)
+			o["avoidedUsd"], o["netUsd"] = 31.5, 31.09
+		}},
+		{name: "outcome ping cost over cap", mutate: func(r map[string]any) {
+			o := outcome0(r)
+			o["pingCostUsd"], o["netUsd"] = 226.0, -218.2
+		}},
+		{name: "outcome net mismatch", mutate: func(r map[string]any) { outcome0(r)["netUsd"] = 7.5 }},
+		{name: "outcome net rounding", mutate: func(r map[string]any) { outcome0(r)["netUsd"] = 7.395 }, ok: true},
 		{name: "too many outcomes", mutate: func(r map[string]any) {
 			o := outcome0(r)
 			list := make([]any, 1001)

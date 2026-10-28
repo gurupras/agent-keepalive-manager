@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"math"
 	"os"
 	"testing"
@@ -26,7 +27,7 @@ func forEachStore(t *testing.T, fn func(t *testing.T, s *Store)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, tbl := range []string{"outcomes", "report_sessions", "reports", "schema_migrations"} {
+		for _, tbl := range []string{"outcomes", "report_sessions", "reports", "hub_kv", "new_installs", "schema_migrations"} {
 			if _, err := db.Exec(`DROP TABLE IF EXISTS ` + tbl); err != nil {
 				t.Fatal(err)
 			}
@@ -94,25 +95,25 @@ func TestMigrateTwice(t *testing.T) {
 func TestUpsertReplaces(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s *Store) {
 		ctx := context.Background()
-		created, err := s.Upsert(ctx, mkReport(idA, "2026-10-20", saved("m1", 5, 1), wasted("m2", 2)), testNow)
+		created, err := s.Upsert(ctx, mkReport(idA, "2026-10-20", saved("m1", 5, 1), wasted("m2", 2)), testNow, Admission{})
 		if err != nil || !created {
 			t.Fatalf("first upsert: created=%v err=%v", created, err)
 		}
 		r2 := mkReport(idA, "2026-10-20", saved("m1", 1, 0.5))
 		r2.Version = "1.5.0"
 		r2.Sessions = map[model.Harness]int{"codex": 1}
-		created, err = s.Upsert(ctx, r2, testNow)
+		created, err = s.Upsert(ctx, r2, testNow, Admission{})
 		if err != nil || created {
 			t.Fatalf("second upsert: created=%v err=%v", created, err)
 		}
-		sum, err := s.Summary(ctx, Range{"2026-10-01", "2026-10-27"})
+		sum, err := s.Summary(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if sum.Installs != 1 || !near(sum.Net, 1) || !near(sum.Wasted, 0) || sum.Pings != 10 {
 			t.Fatalf("after replace: %+v", sum)
 		}
-		rows, err := s.Breakdown(ctx, Range{"2026-10-01", "2026-10-27"}, "version")
+		rows, err := s.Breakdown(ctx, Range{From: "2026-10-01", To: "2026-10-27"}, "version")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,7 +142,7 @@ func seed(t *testing.T, s *Store) {
 	reports[3].Pings.Sent = 4
 	reports[3].Pings.Cold = 0
 	for _, r := range reports {
-		if _, err := s.Upsert(ctx, r, testNow); err != nil {
+		if _, err := s.Upsert(ctx, r, testNow, Admission{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -151,7 +152,7 @@ func TestSummary(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s *Store) {
 		seed(t, s)
 		ctx := context.Background()
-		sum, err := s.Summary(ctx, Range{"2026-10-01", "2026-10-27"})
+		sum, err := s.Summary(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +166,7 @@ func TestSummary(t *testing.T) {
 		}
 
 		// Active means a report in the last 7 days of the range.
-		sum, err = s.Summary(ctx, Range{"2026-10-01", "2026-10-16"})
+		sum, err = s.Summary(ctx, Range{From: "2026-10-01", To: "2026-10-16"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +174,7 @@ func TestSummary(t *testing.T) {
 			t.Fatalf("early range: %+v", sum)
 		}
 		// A range shorter than 7 days: every install in it is active.
-		sum, err = s.Summary(ctx, Range{"2026-10-01", "2026-10-02"})
+		sum, err = s.Summary(ctx, Range{From: "2026-10-01", To: "2026-10-02"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -181,7 +182,7 @@ func TestSummary(t *testing.T) {
 			t.Fatalf("short range: %+v", sum)
 		}
 		// Empty range.
-		sum, err = s.Summary(ctx, Range{"2025-01-01", "2025-01-31"})
+		sum, err = s.Summary(ctx, Range{From: "2025-01-01", To: "2025-01-31"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +196,7 @@ func TestSeries(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s *Store) {
 		seed(t, s)
 		ctx := context.Background()
-		rg := Range{"2026-10-19", "2026-10-22"}
+		rg := Range{From: "2026-10-19", To: "2026-10-22"}
 		want := map[string][]float64{
 			"net":      {0, 3.5, -1.5, 0},
 			"saved":    {0, 4, 0, 0},
@@ -227,7 +228,7 @@ func TestBreakdown(t *testing.T) {
 	forEachStore(t, func(t *testing.T, s *Store) {
 		seed(t, s)
 		ctx := context.Background()
-		rg := Range{"2026-10-01", "2026-10-27"}
+		rg := Range{From: "2026-10-01", To: "2026-10-27"}
 
 		rows, err := s.Breakdown(ctx, rg, "model")
 		if err != nil {
@@ -302,7 +303,7 @@ func TestPurge(t *testing.T) {
 		if n != 2 {
 			t.Fatalf("purged %d reports, want 2", n)
 		}
-		sum, err := s.Summary(ctx, Range{"2026-01-01", "2026-10-27"})
+		sum, err := s.Summary(ctx, Range{From: "2026-01-01", To: "2026-10-27"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +328,7 @@ func TestUpsertConcurrent(t *testing.T) {
 					id = idB
 				}
 				day := time.Date(2026, 10, 1+i%5, 0, 0, 0, 0, time.UTC).Format(time.DateOnly)
-				_, err := s.Upsert(ctx, mkReport(id, day, saved("m", 1, 0)), testNow)
+				_, err := s.Upsert(ctx, mkReport(id, day, saved("m", 1, 0)), testNow, Admission{})
 				errc <- err
 			}(i)
 		}
@@ -339,6 +340,167 @@ func TestUpsertConcurrent(t *testing.T) {
 		var n int
 		if err := s.db.QueryRow(`SELECT COUNT(*) FROM reports`).Scan(&n); err != nil || n != 10 {
 			t.Fatalf("reports %d err %v", n, err)
+		}
+	})
+}
+
+func TestNetworkOf(t *testing.T) {
+	for in, want := range map[string]string{
+		"203.0.113.77":            "203.0.113.0/24",
+		"::ffff:203.0.113.77":     "203.0.113.0/24",
+		"2001:db8:1:2:3:4:5:6":    "2001:db8:1:2::/64",
+		"not-an-address":          "not-an-address",
+		"2001:db8:1:2::abcd:ef01": "2001:db8:1:2::/64",
+	} {
+		if got := NetworkOf(in); got != want {
+			t.Errorf("NetworkOf(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestAdmission(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		netA := Admission{Network: "203.0.113.0/24", Limit: 2}
+		netB := Admission{Network: "198.51.100.0/24", Limit: 2}
+		up := func(id, day string, a Admission, at time.Time) error {
+			_, err := s.Upsert(ctx, mkReport(id, day), at, a)
+			return err
+		}
+		if err := up(idA, "2026-10-26", netA, testNow); err != nil {
+			t.Fatal(err)
+		}
+		if err := up(idB, "2026-10-26", netA, testNow); err != nil {
+			t.Fatal(err)
+		}
+		if err := up(idC, "2026-10-26", netA, testNow); !errors.Is(err, ErrNetworkFull) {
+			t.Fatalf("third new install: %v", err)
+		}
+		// Known installs are not new, whatever day they report for.
+		if err := up(idA, "2026-10-27", netA, testNow); err != nil {
+			t.Fatal(err)
+		}
+		// Another network has its own count.
+		if err := up(idC, "2026-10-26", netB, testNow); err != nil {
+			t.Fatal(err)
+		}
+		// The next UTC day starts over, and the old rows and salt go.
+		tomorrow := testNow.Add(24 * time.Hour)
+		const idD = "dddddddd-0000-4000-8000-000000000004"
+		if err := up(idD, "2026-10-27", netA, tomorrow); err != nil {
+			t.Fatal(err)
+		}
+		var rows, salts int
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM new_installs`).Scan(&rows); err != nil || rows != 1 {
+			t.Fatalf("new_installs rows %d err %v", rows, err)
+		}
+		if err := s.db.QueryRow(`SELECT COUNT(*) FROM hub_kv`).Scan(&salts); err != nil || salts != 1 {
+			t.Fatalf("salts %d err %v", salts, err)
+		}
+		// No network or no limit: never refused.
+		const idE = "eeeeeeee-0000-4000-8000-000000000005"
+		if err := up(idE, "2026-10-27", Admission{Limit: 1}, tomorrow); err != nil {
+			t.Fatal(err)
+		}
+		// Nothing stored for a refused install.
+		var n int
+		if err := s.db.QueryRow(s.q(`SELECT COUNT(*) FROM reports WHERE install_id = ?`), idC).Scan(&n); err != nil || n != 1 {
+			t.Fatalf("idC reports %d err %v", n, err)
+		}
+	})
+}
+
+func TestEstablished(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		// idA reports on three days, idB on one.
+		for _, day := range []string{"2026-10-20", "2026-10-21", "2026-10-22"} {
+			if _, err := s.Upsert(ctx, mkReport(idA, day, saved("m", 2, 0)), testNow, Admission{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := s.Upsert(ctx, mkReport(idB, "2026-10-22", saved("m", 1000, 0)), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		all := Range{From: "2026-10-01", To: "2026-10-27"}
+		est := Range{From: "2026-10-01", To: "2026-10-27", MinDays: 3}
+		sum, err := s.Summary(ctx, est)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sum.Installs != 1 || sum.Pending != 1 || !near(sum.Net, 6) || sum.Pings != 30 {
+			t.Fatalf("established: %+v", sum)
+		}
+		sum, err = s.Summary(ctx, all)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if sum.Installs != 2 || sum.Pending != 0 || !near(sum.Net, 1006) {
+			t.Fatalf("all: %+v", sum)
+		}
+		pts, err := s.Series(ctx, est, "net")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range pts {
+			if p.Day == "2026-10-22" && !near(p.Value, 2) {
+				t.Fatalf("series 10-22: %v", p.Value)
+			}
+		}
+		for _, by := range []string{"model", "version"} {
+			rows, err := s.Breakdown(ctx, est, by)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 1 || rows[0].Installs != 1 || !near(rows[0].Net, 6) {
+				t.Fatalf("breakdown %s: %+v", by, rows)
+			}
+		}
+	})
+}
+
+func TestRobust(t *testing.T) {
+	median, trimmed, cut, top := robust(nil)
+	if median != 0 || trimmed != 0 || cut != 0 || top != 0 {
+		t.Fatal("empty")
+	}
+	// 200 installs: 199 at 1, one at 1e6. The outlier is cut, the median
+	// ignores it, and it holds almost all of the total.
+	nets := make([]float64, 200)
+	for i := range nets {
+		nets[i] = 1
+	}
+	nets[17] = 1e6
+	nets[3] = -0.5
+	median, trimmed, cut, top = robust(nets)
+	if median != 1 || cut != 2 || !near(trimmed, 196.5) || top < 0.99 {
+		t.Fatalf("median %v trimmed %v cut %d top %v", median, trimmed, cut, top)
+	}
+	median, _, _, _ = robust([]float64{1, 3})
+	if median != 2 {
+		t.Fatalf("even median %v", median)
+	}
+}
+
+func TestSummaryRobust(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		if _, err := s.Upsert(ctx, mkReport(idA, "2026-10-20", saved("m", 4, 0)), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Upsert(ctx, mkReport(idB, "2026-10-20", saved("m", 10, 0)), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		// idC closed nothing: its net is 0.
+		if _, err := s.Upsert(ctx, mkReport(idC, "2026-10-20"), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		sum, err := s.Summary(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !near(sum.MedianNet, 4) || !near(sum.TrimmedNet, 14) || sum.Trimmed != 0 || !near(sum.TopShare, 10.0/14) {
+			t.Fatalf("robust: %+v", sum)
 		}
 	})
 }

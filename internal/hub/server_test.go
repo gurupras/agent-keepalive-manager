@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -344,7 +345,8 @@ func TestQueryAPI(t *testing.T) {
 	// The JSON keys are the documented ones.
 	var raw map[string]any
 	json.Unmarshal(w.Body.Bytes(), &raw)
-	for _, k := range []string{"installs", "activeInstalls", "saved", "wasted", "net", "pingCost", "pings", "cold", "returns"} {
+	for _, k := range []string{"installs", "activeInstalls", "saved", "wasted", "net", "pingCost", "pings", "cold", "returns",
+		"pending", "medianNet", "trimmedNet", "trimmed", "topShare", "establishedDays"} {
 		if _, ok := raw[k]; !ok {
 			t.Errorf("summary lacks %s", k)
 		}
@@ -375,6 +377,7 @@ func TestQueryAPI(t *testing.T) {
 		"/v1/series?metric=bogus",
 		"/v1/breakdown?by=hostname",
 		"/v1/breakdown",
+		"/v1/summary?installs=some",
 	} {
 		if w := do(h, "GET", p, nil); w.Code != http.StatusBadRequest {
 			t.Errorf("%s: %d", p, w.Code)
@@ -429,3 +432,67 @@ func TestRedactingWriter(t *testing.T) {
 }
 
 func slogTo(w io.Writer) *slog.Logger { return slog.New(slog.NewTextHandler(w, nil)) }
+
+func TestIngestNewInstallsPerNetwork(t *testing.T) {
+	_, h := newTestServer(t, Config{NewInstallsPerNetwork: 1})
+	first, second := validReport(), validReport()
+	second["installId"] = "bbbbbbbb-0000-4000-8000-000000000002"
+	if w := do(h, "POST", "/v1/reports", mustJSON(first), withRemote("203.0.113.7:4000")); w.Code != http.StatusAccepted {
+		t.Fatalf("first: %d %s", w.Code, w.Body)
+	}
+	// Same /24, new install: refused until the next UTC midnight.
+	w := do(h, "POST", "/v1/reports", mustJSON(second), withRemote("203.0.113.200:4000"))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("second: %d %s", w.Code, w.Body)
+	}
+	next := time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)
+	if got, want := w.Header().Get("Retry-After"), strconv.Itoa(int(next.Sub(testNow).Seconds())); got != want {
+		t.Fatalf("Retry-After %s, want %s", got, want)
+	}
+	// The known install still reports from there.
+	first["day"] = "2026-10-25"
+	if w := do(h, "POST", "/v1/reports", mustJSON(first), withRemote("203.0.113.9:4000")); w.Code != http.StatusAccepted {
+		t.Fatalf("known install: %d %s", w.Code, w.Body)
+	}
+	// Another network is not affected.
+	if w := do(h, "POST", "/v1/reports", mustJSON(second), withRemote("198.51.100.1:4000")); w.Code != http.StatusAccepted {
+		t.Fatalf("other network: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestIngestMaxDailyUSD(t *testing.T) {
+	_, h := newTestServer(t, Config{MaxDailyUSD: 5})
+	w := do(h, "POST", "/v1/reports", mustJSON(validReport()))
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "cap") {
+		t.Fatalf("over the cap: %d %s", w.Code, w.Body)
+	}
+	_, h = newTestServer(t, Config{MaxDailyUSD: 7.8})
+	if w := do(h, "POST", "/v1/reports", mustJSON(validReport())); w.Code != http.StatusAccepted {
+		t.Fatalf("at the cap: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestQueryEstablished(t *testing.T) {
+	_, h := newTestServer(t, Config{EstablishedDays: 2})
+	if w := do(h, "POST", "/v1/reports", mustJSON(validReport())); w.Code != http.StatusAccepted {
+		t.Fatal(w.Code)
+	}
+	var sum Summary
+	w := do(h, "GET", "/v1/summary?from=2026-10-20&to=2026-10-27", nil)
+	if err := json.Unmarshal(w.Body.Bytes(), &sum); err != nil || sum.Installs != 0 || sum.Pending != 1 || sum.EstablishedDays != 2 {
+		t.Fatalf("established: %s", w.Body)
+	}
+	w = do(h, "GET", "/v1/summary?from=2026-10-20&to=2026-10-27&installs=all", nil)
+	if err := json.Unmarshal(w.Body.Bytes(), &sum); err != nil || sum.Installs != 1 || sum.Pending != 0 || !near(sum.Net, 7.39) {
+		t.Fatalf("all: %s", w.Body)
+	}
+	r2 := validReport()
+	r2["day"] = "2026-10-25"
+	if w := do(h, "POST", "/v1/reports", mustJSON(r2)); w.Code != http.StatusAccepted {
+		t.Fatal(w.Code)
+	}
+	w = do(h, "GET", "/v1/summary?from=2026-10-20&to=2026-10-27", nil)
+	if err := json.Unmarshal(w.Body.Bytes(), &sum); err != nil || sum.Installs != 1 || sum.Pending != 0 {
+		t.Fatalf("after two days: %s", w.Body)
+	}
+}

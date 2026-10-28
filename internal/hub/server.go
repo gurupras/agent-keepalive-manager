@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -38,8 +39,18 @@ type Config struct {
 	DashboardToken string
 	TrustProxy     bool
 	RetentionDays  int
-	Version        string
-	Logger         *slog.Logger
+	// MaxDailyUSD refuses a report whose avoided total is above it; 0 is
+	// no cap.
+	MaxDailyUSD float64
+	// NewInstallsPerNetwork is the most installs never seen before that
+	// one /24 (IPv4) or /64 (IPv6) may add per UTC day; 0 is no limit.
+	NewInstallsPerNetwork int
+	// EstablishedDays is how many daily reports an install needs before
+	// the dashboard counts it, unless asked for all installs; 0 or 1
+	// counts every install.
+	EstablishedDays int
+	Version         string
+	Logger          *slog.Logger
 }
 
 var basePathRe = regexp.MustCompile(`^(/[A-Za-z0-9._~-]+)*$`)
@@ -80,6 +91,9 @@ func (c *Config) validate() error {
 	}
 	if c.RetentionDays < 0 {
 		return errors.New("retention days must not be negative")
+	}
+	if c.MaxDailyUSD < 0 || c.NewInstallsPerNetwork < 0 || c.EstablishedDays < 0 {
+		return errors.New("max daily USD, new installs per network and established days must not be negative")
 	}
 	if c.Logger == nil {
 		c.Logger = slog.New(slog.DiscardHandler)
@@ -264,7 +278,19 @@ func (s *Server) handleReport(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	created, err := s.store.Upsert(r.Context(), rep, now)
+	if s.cfg.MaxDailyUSD > 0 && rep.AvoidedUSD() > s.cfg.MaxDailyUSD {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("avoidedUsd: more than this hub's cap of $%v a day", s.cfg.MaxDailyUSD))
+		return
+	}
+	created, err := s.store.Upsert(r.Context(), rep, now,
+		Admission{Network: NetworkOf(s.sender(r)), Limit: s.cfg.NewInstallsPerNetwork})
+	if errors.Is(err, ErrNetworkFull) {
+		// Retried by the sender after the next UTC midnight.
+		next := utcDay(now).AddDate(0, 0, 1)
+		w.Header().Set("Retry-After", strconv.Itoa(max(60, int(next.Sub(now).Seconds()+0.5))))
+		writeError(w, http.StatusTooManyRequests, err.Error())
+		return
+	}
 	if err != nil {
 		s.log.Error("store report", "err", err)
 		writeError(w, http.StatusInternalServerError, "could not store report")
@@ -420,7 +446,15 @@ func (s *Server) parseRange(r *http.Request) (Range, error) {
 	if to.Sub(from) > maxRangeDays*24*time.Hour {
 		return Range{}, fmt.Errorf("range longer than %d days", maxRangeDays)
 	}
-	return Range{From: from.Format(time.DateOnly), To: to.Format(time.DateOnly)}, nil
+	rg := Range{From: from.Format(time.DateOnly), To: to.Format(time.DateOnly), MinDays: s.cfg.EstablishedDays}
+	switch r.URL.Query().Get("installs") {
+	case "", "established":
+	case "all":
+		rg.MinDays = 0
+	default:
+		return Range{}, errors.New("installs: must be established or all")
+	}
+	return rg, nil
 }
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
@@ -435,6 +469,7 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "query failed")
 		return
 	}
+	sum.EstablishedDays = s.cfg.EstablishedDays
 	writeJSON(w, http.StatusOK, sum)
 }
 

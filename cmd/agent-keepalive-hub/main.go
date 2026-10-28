@@ -81,6 +81,18 @@ func parseFlags(cmd string, args []string, stderr io.Writer) (hub.Config, slog.L
 	if err != nil {
 		return cfg, level, err
 	}
+	maxDaily, err := envFloat("HUB_MAX_DAILY_USD", 2000)
+	if err != nil {
+		return cfg, level, err
+	}
+	perNetwork, err := envInt("HUB_NEW_INSTALLS_PER_NETWORK", 5)
+	if err != nil {
+		return cfg, level, err
+	}
+	established, err := envInt("HUB_ESTABLISHED_DAYS", 3)
+	if err != nil {
+		return cfg, level, err
+	}
 	fs.StringVar(&cfg.Listen, "listen", env("HUB_LISTEN", ":8080"), "address to listen on (HUB_LISTEN)")
 	fs.StringVar(&cfg.DataDir, "data-dir", env("HUB_DATA_DIR", "./data"), "directory of the SQLite database (HUB_DATA_DIR)")
 	fs.StringVar(&cfg.DatabaseURL, "database-url", env("HUB_DATABASE_URL", ""), "postgres:// URL to use Postgres instead of SQLite (HUB_DATABASE_URL)")
@@ -90,6 +102,9 @@ func parseFlags(cmd string, args []string, stderr io.Writer) (hub.Config, slog.L
 	fs.StringVar(&cfg.DashboardToken, "dashboard-token", env("HUB_DASHBOARD_TOKEN", ""), "token for --dashboard token (HUB_DASHBOARD_TOKEN; prefer the variable)")
 	fs.BoolVar(&cfg.TrustProxy, "trust-proxy", trust, "use X-Forwarded-For and X-Forwarded-Proto from a reverse proxy (HUB_TRUST_PROXY)")
 	fs.IntVar(&cfg.RetentionDays, "retention-days", retention, "delete reports older than this many days; 0 keeps all (HUB_RETENTION_DAYS)")
+	fs.Float64Var(&cfg.MaxDailyUSD, "max-daily-usd", maxDaily, "refuse a report saving more than this in a day; 0 is no cap (HUB_MAX_DAILY_USD)")
+	fs.IntVar(&cfg.NewInstallsPerNetwork, "new-installs-per-network", perNetwork, "most new installs one /24 or /64 may add per day; 0 is no limit (HUB_NEW_INSTALLS_PER_NETWORK)")
+	fs.IntVar(&cfg.EstablishedDays, "established-days", established, "daily reports an install needs before the dashboard counts it; 0 counts all (HUB_ESTABLISHED_DAYS)")
 	fs.TextVar(&level, "log-level", levelFromEnv(), "debug, info, warn or error (HUB_LOG_LEVEL)")
 	if err := fs.Parse(args); err != nil {
 		return cfg, level, err
@@ -105,6 +120,18 @@ func env(name, def string) string {
 		return v
 	}
 	return def
+}
+
+func envFloat(name string, def float64) (float64, error) {
+	v, ok := os.LookupEnv(name)
+	if !ok || v == "" {
+		return def, nil
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", name, err)
+	}
+	return n, nil
 }
 
 func envInt(name string, def int) (int, error) {

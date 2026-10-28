@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import * as api from './api.ts'
-import type { BreakdownRow, Dimension, Metric, Point, Summary } from './api.ts'
+import type { BreakdownRow, Dimension, Installs, Metric, Point, Summary } from './api.ts'
 import { count, money, percent, shortDay } from './format.ts'
 import { useRange } from './range.ts'
 import { cycleTheme, theme } from './theme.ts'
@@ -32,6 +32,7 @@ const DIMENSIONS: { key: Dimension, label: string }[] = [
 ]
 
 const metric = ref<Metric>('net')
+const installs = ref<Installs>('established')
 const summary = ref<Summary | null>(null)
 const points = ref<Point[] | null>(null)
 const tables = ref<Record<Dimension, BreakdownRow[] | null>>(emptyTables())
@@ -57,7 +58,7 @@ function failed (e: unknown, signal: AbortSignal) {
 async function loadSeries (signal: AbortSignal) {
   points.value = null
   try {
-    const p = await api.series(range.value, metric.value, signal)
+    const p = await api.series(range.value, installs.value, metric.value, signal)
     if (!signal.aborted) points.value = p
   } catch (e) {
     failed(e, signal)
@@ -71,20 +72,20 @@ function loadAll () {
   error.value = ''
   summary.value = null
   tables.value = emptyTables()
-  api.summary(range.value, signal).then(s => {
+  api.summary(range.value, installs.value, signal).then(s => {
     if (signal.aborted) return
     summary.value = s
     needToken.value = false
   }, e => failed(e, signal))
   loadSeries(signal)
   for (const d of DIMENSIONS) {
-    api.breakdown(range.value, d.key, signal).then(rows => {
+    api.breakdown(range.value, installs.value, d.key, signal).then(rows => {
       if (!signal.aborted) tables.value[d.key] = rows
     }, e => failed(e, signal))
   }
 }
 
-watch(range, loadAll, { immediate: true })
+watch([range, installs], loadAll, { immediate: true })
 
 // After a reload a valid cookie still signs the user in; ask so sign-out
 // is offered.
@@ -113,6 +114,30 @@ async function onLogout () {
 const coldRate = computed(() => {
   const s = summary.value
   return s && s.pings > 0 ? s.cold / s.pings : 0
+})
+
+// The hub's setting, known once a summary has loaded; 0 or 1 means every
+// install counts, so there is nothing to switch.
+const establishedDays = ref(0)
+watch(summary, s => { if (s) establishedDays.value = s.establishedDays })
+
+const perInstall = computed(() => {
+  const s = summary.value
+  return s && s.installs > 0 ? s.net / s.installs : 0
+})
+
+const installsHint = computed(() => {
+  const s = summary.value
+  if (!s) return undefined
+  if (s.pending > 0) return `+${count(s.pending)} new, not counted until ${s.establishedDays} reports`
+  return 'sent a report in the range'
+})
+
+const trimmedHint = computed(() => {
+  const s = summary.value
+  if (!s) return undefined
+  if (s.trimmed === 0) return 'nothing left out below 100 installs'
+  return `${count(s.trimmed)} install${s.trimmed === 1 ? '' : 's'} furthest from zero left out`
 })
 
 const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: light', dark: 'Theme: dark' })[theme.value])
@@ -151,7 +176,23 @@ const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: lig
 
     <main v-else class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
       <div class="flex flex-wrap items-center justify-between gap-3">
-        <RangePicker :selection="selection" :range="range" @select="select" />
+        <div class="flex flex-wrap items-center gap-2">
+          <RangePicker :selection="selection" :range="range" @select="select" />
+          <div
+            v-if="establishedDays > 1" class="flex rounded-lg border border-line bg-surface-1 p-0.5" role="group"
+            aria-label="Installs counted"
+          >
+            <button
+              v-for="o in ([['established', `Established (${establishedDays}+ reports)`], ['all', 'All installs']] as const)"
+              :key="o[0]" type="button"
+              class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+              :class="installs === o[0] ? 'bg-accent text-on-accent' : 'text-text-2 hover:text-text-0'"
+              :aria-pressed="installs === o[0]" @click="installs = o[0]"
+            >
+              {{ o[1] }}
+            </button>
+          </div>
+        </div>
         <p class="text-sm text-text-3 tabular">{{ shortDay(range.from) }} – {{ shortDay(range.to) }} (UTC)</p>
       </div>
 
@@ -160,7 +201,7 @@ const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: lig
       </p>
 
       <section class="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Totals">
-        <KpiTile label="Installs" :value="summary ? count(summary.installs) : '–'" hint="sent a report in the range" />
+        <KpiTile label="Installs" :value="summary ? count(summary.installs) : '–'" :hint="installsHint" />
         <KpiTile label="Active installs" :value="summary ? count(summary.activeInstalls) : '–'" hint="reported in the last 7 days" />
         <KpiTile
           label="Net saved" :value="summary ? money(summary.net) : '–'"
@@ -171,6 +212,14 @@ const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: lig
         <KpiTile label="Ping cost" :value="summary ? money(summary.pingCost) : '–'" hint="all keepalive pings" />
         <KpiTile label="Pings" :value="summary ? count(summary.pings) : '–'" />
         <KpiTile label="Cold rate" :value="summary ? percent(coldRate) : '–'" :hint="summary ? `${count(summary.cold)} pings found the cache cold` : undefined" />
+        <KpiTile label="Net per install" :value="summary ? money(perInstall) : '–'" hint="mean over installs in the range" />
+        <KpiTile label="Median install" :value="summary ? money(summary.medianNet) : '–'" hint="half the installs netted more" />
+        <KpiTile label="Net without outliers" :value="summary ? money(summary.trimmedNet) : '–'" :hint="trimmedHint" />
+        <KpiTile
+          label="Largest install" :value="summary ? percent(summary.topShare) : '–'"
+          :tone="summary && summary.topShare > 0.5 && summary.installs > 2 ? 'danger' : undefined"
+          hint="its share of all money moved"
+        />
       </section>
 
       <section class="rounded-xl border border-line bg-surface-1 p-4 shadow-card" aria-label="Per day">

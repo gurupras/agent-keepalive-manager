@@ -2,9 +2,15 @@ package hub
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -123,6 +129,18 @@ var migrations = []string{
 		PRIMARY KEY (install_id, day, idx)
 	);
 	CREATE INDEX outcomes_day ON outcomes (day);`,
+	// hub_kv holds the per-day network salts; new_installs the installs
+	// each network added on a day, as a salted hash (Admission).
+	`CREATE TABLE hub_kv (
+		key   TEXT PRIMARY KEY,
+		value TEXT NOT NULL
+	);
+	CREATE TABLE new_installs (
+		day        TEXT NOT NULL,
+		network    TEXT NOT NULL,
+		install_id TEXT NOT NULL,
+		PRIMARY KEY (day, network, install_id)
+	);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -188,9 +206,108 @@ func (s *Store) inTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	return tx.Commit()
 }
 
+// Admission limits how many installs never seen before one network may
+// add in a UTC day, so one machine cannot flood the totals with fresh
+// install ids. The network is kept only as an HMAC under a random salt
+// that is replaced every day, so stored rows cannot be tied to an address.
+type Admission struct {
+	// Network is the sender's network (NetworkOf); empty skips the limit.
+	Network string
+	// Limit is the most new installs per network per day; 0 is no limit.
+	Limit int
+}
+
+// ErrNetworkFull is Upsert refusing a new install under Admission.
+var ErrNetworkFull = errors.New("too many new installs from this network today")
+
+const saltKeyPrefix = "network-salt:"
+
+// NetworkOf is the /24 of an IPv4 address or the /64 of an IPv6 one, or
+// the input itself when it is not an address.
+func NetworkOf(addr string) string {
+	ip, err := netip.ParseAddr(addr)
+	if err != nil {
+		return addr
+	}
+	ip = ip.Unmap()
+	bits := 64
+	if ip.Is4() {
+		bits = 24
+	}
+	p, _ := ip.Prefix(bits)
+	return p.String()
+}
+
+// admit records r's install as new from a.Network today, or returns
+// ErrNetworkFull when the network has added a.Limit installs already. An
+// install with a stored report is not new.
+func (s *Store) admit(ctx context.Context, tx *sql.Tx, r *Report, a Admission, received time.Time) error {
+	if a.Limit <= 0 || a.Network == "" {
+		return nil
+	}
+	var one int
+	switch err := tx.QueryRowContext(ctx, s.q(`SELECT 1 FROM reports WHERE install_id = ? LIMIT 1`),
+		r.InstallID).Scan(&one); {
+	case err == nil:
+		return nil
+	case !errors.Is(err, sql.ErrNoRows):
+		return err
+	}
+	today := received.UTC().Format(time.DateOnly)
+	salt, err := s.daySalt(ctx, tx, today)
+	if err != nil {
+		return err
+	}
+	m := hmac.New(sha256.New, []byte(salt))
+	m.Write([]byte(a.Network))
+	network := hex.EncodeToString(m.Sum(nil))
+	var n int
+	if err := tx.QueryRowContext(ctx, s.q(`SELECT COUNT(*) FROM new_installs WHERE day = ? AND network = ?`),
+		today, network).Scan(&n); err != nil {
+		return err
+	}
+	if n >= a.Limit {
+		return ErrNetworkFull
+	}
+	_, err = tx.ExecContext(ctx, s.q(`INSERT INTO new_installs (day, network, install_id) VALUES (?, ?, ?)
+		ON CONFLICT (day, network, install_id) DO NOTHING`), today, network, r.InstallID)
+	return err
+}
+
+// daySalt returns the salt for day, creating it on the day's first use and
+// then deleting every earlier salt and new_installs row.
+func (s *Store) daySalt(ctx context.Context, tx *sql.Tx, day string) (string, error) {
+	key := saltKeyPrefix + day
+	var salt string
+	err := tx.QueryRowContext(ctx, s.q(`SELECT value FROM hub_kv WHERE key = ?`), key).Scan(&salt)
+	if err == nil {
+		return salt, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	b := make([]byte, 32)
+	rand.Read(b)
+	// Another hub on the same database may have won the race: read back.
+	if _, err := tx.ExecContext(ctx, s.q(`INSERT INTO hub_kv (key, value) VALUES (?, ?)
+		ON CONFLICT (key) DO NOTHING`), key, hex.EncodeToString(b)); err != nil {
+		return "", err
+	}
+	if err := tx.QueryRowContext(ctx, s.q(`SELECT value FROM hub_kv WHERE key = ?`), key).Scan(&salt); err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, s.q(`DELETE FROM hub_kv WHERE key LIKE ? AND key < ?`),
+		saltKeyPrefix+"%", key); err != nil {
+		return "", err
+	}
+	_, err = tx.ExecContext(ctx, s.q(`DELETE FROM new_installs WHERE day < ?`), day)
+	return salt, err
+}
+
 // Upsert stores a validated report. A report for an (installId, day) already
-// stored replaces it; created is false then.
-func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time) (created bool, err error) {
+// stored replaces it; created is false then. A new install is subject to a,
+// and refused with ErrNetworkFull.
+func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Admission) (created bool, err error) {
 	err = s.inTx(ctx, func(tx *sql.Tx) error {
 		var one int
 		switch err := tx.QueryRowContext(ctx, s.q(`SELECT 1 FROM reports WHERE install_id = ? AND day = ?`),
@@ -199,6 +316,11 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time) (crea
 			created = true
 		case err != nil:
 			return err
+		}
+		if created {
+			if err := s.admit(ctx, tx, r, a, received); err != nil {
+				return err
+			}
 		}
 		_, err := tx.ExecContext(ctx, s.q(`INSERT INTO reports (
 			install_id, day, schema_version, version, os, arch, profile, install_kind,
@@ -278,10 +400,39 @@ type Summary struct {
 	Pings          int64   `json:"pings"`
 	Cold           int64   `json:"cold"`
 	Returns        int64   `json:"returns"`
+	// Pending is the installs in the range left out for not having
+	// reported on MinDays days yet.
+	Pending int64 `json:"pending"`
+	// MedianNet is the median of each install's net over the range.
+	MedianNet float64 `json:"medianNet"`
+	// TrimmedNet is Net without the 1% of installs (rounded down) furthest
+	// from zero; Trimmed is how many were left out.
+	TrimmedNet float64 `json:"trimmedNet"`
+	Trimmed    int64   `json:"trimmed"`
+	// TopShare is the largest install's share of the summed |net|, 0–1.
+	TopShare float64 `json:"topShare"`
+	// EstablishedDays is the hub's EstablishedDays setting, for the
+	// dashboard to describe the filter.
+	EstablishedDays int `json:"establishedDays"`
 }
 
-// Range is an inclusive range of UTC days, as YYYY-MM-DD.
-type Range struct{ From, To string }
+// Range is an inclusive range of UTC days, as YYYY-MM-DD. With MinDays
+// above 1, only installs that have reported on at least MinDays days (in
+// any range) count.
+type Range struct {
+	From, To string
+	MinDays  int
+}
+
+// established is a filter on col keeping rg's established installs, to
+// append to a WHERE clause, with its argument.
+func (rg Range) established(col string) (string, []any) {
+	if rg.MinDays <= 1 {
+		return "", nil
+	}
+	return ` AND ` + col + ` IN (SELECT install_id FROM reports GROUP BY install_id HAVING COUNT(*) >= ?)`,
+		[]any{rg.MinDays}
+}
 
 // activeWindowDays is how recent a report must be for its install to count
 // as active: the last 7 days of the range.
@@ -304,21 +455,86 @@ func (s *Store) Summary(ctx context.Context, rg Range) (Summary, error) {
 	if activeFrom < rg.From {
 		activeFrom = rg.From
 	}
+	rf, rargs := rg.established("install_id")
 	err := s.db.QueryRowContext(ctx, s.q(`SELECT
 		COUNT(DISTINCT install_id),
 		COUNT(DISTINCT CASE WHEN day >= ? THEN install_id END),
 		COALESCE(SUM(pings_cost), 0),
 		CAST(COALESCE(SUM(pings_sent), 0) AS BIGINT),
 		CAST(COALESCE(SUM(pings_cold), 0) AS BIGINT)
-		FROM reports WHERE day >= ? AND day <= ?`), activeFrom, rg.From, rg.To).
+		FROM reports WHERE day >= ? AND day <= ?`+rf), append([]any{activeFrom, rg.From, rg.To}, rargs...)...).
 		Scan(&sum.Installs, &sum.ActiveInstalls, &sum.PingCost, &sum.Pings, &sum.Cold)
 	if err != nil {
 		return sum, err
 	}
+	if rf != "" {
+		var all int64
+		if err := s.db.QueryRowContext(ctx, s.q(`SELECT COUNT(DISTINCT install_id) FROM reports
+			WHERE day >= ? AND day <= ?`), rg.From, rg.To).Scan(&all); err != nil {
+			return sum, err
+		}
+		sum.Pending = all - sum.Installs
+	}
+	of, oargs := rg.established("o.install_id")
 	err = s.db.QueryRowContext(ctx, s.q(`SELECT `+sqlSaved+`, `+sqlWasted+`, `+sqlNet+`, `+sqlReturns+`
-		FROM outcomes o WHERE o.day >= ? AND o.day <= ?`), rg.From, rg.To).
+		FROM outcomes o WHERE o.day >= ? AND o.day <= ?`+of), append([]any{rg.From, rg.To}, oargs...)...).
 		Scan(&sum.Saved, &sum.Wasted, &sum.Net, &sum.Returns)
-	return sum, err
+	if err != nil {
+		return sum, err
+	}
+	rows, err := s.db.QueryContext(ctx, s.q(`SELECT `+sqlNet+` FROM outcomes o
+		WHERE o.day >= ? AND o.day <= ?`+of+` GROUP BY o.install_id`), append([]any{rg.From, rg.To}, oargs...)...)
+	if err != nil {
+		return sum, err
+	}
+	defer rows.Close()
+	var nets []float64
+	for rows.Next() {
+		var n float64
+		if err := rows.Scan(&n); err != nil {
+			return sum, err
+		}
+		nets = append(nets, n)
+	}
+	if err := rows.Err(); err != nil {
+		return sum, err
+	}
+	// Installs that reported but closed no outcome have a net of zero.
+	for int64(len(nets)) < sum.Installs {
+		nets = append(nets, 0)
+	}
+	sum.MedianNet, sum.TrimmedNet, sum.Trimmed, sum.TopShare = robust(nets)
+	return sum, nil
+}
+
+// robust returns the median of nets, their sum without the 1% furthest from
+// zero (and how many that is), and the largest one's share of the sum of
+// their magnitudes.
+func robust(nets []float64) (median, trimmed float64, cut int64, top float64) {
+	n := len(nets)
+	if n == 0 {
+		return 0, 0, 0, 0
+	}
+	sorted := append([]float64(nil), nets...)
+	sort.Float64s(sorted)
+	if n%2 == 1 {
+		median = sorted[n/2]
+	} else {
+		median = (sorted[n/2-1] + sorted[n/2]) / 2
+	}
+	sort.Slice(sorted, func(i, j int) bool { return math.Abs(sorted[i]) > math.Abs(sorted[j]) })
+	cut = int64(n / 100)
+	var abs float64
+	for i, v := range sorted {
+		abs += math.Abs(v)
+		if int64(i) >= cut {
+			trimmed += v
+		}
+	}
+	if abs > 0 {
+		top = math.Abs(sorted[0]) / abs
+	}
+	return median, trimmed, cut, top
 }
 
 // Point is one day of a series.
@@ -332,24 +548,26 @@ var SeriesMetrics = []string{"net", "saved", "wasted", "installs", "pings"}
 
 // Series returns one value per day of rg, zero on days without reports.
 func (s *Store) Series(ctx context.Context, rg Range, metric string) ([]Point, error) {
+	of, args := rg.established("o.install_id")
+	rf, _ := rg.established("install_id")
 	var query string
 	switch metric {
 	case "net":
-		query = `SELECT o.day, ` + sqlNet + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ? GROUP BY o.day`
+		query = `SELECT o.day, ` + sqlNet + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ?` + of + ` GROUP BY o.day`
 	case "saved":
-		query = `SELECT o.day, ` + sqlSaved + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ? GROUP BY o.day`
+		query = `SELECT o.day, ` + sqlSaved + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ?` + of + ` GROUP BY o.day`
 	case "wasted":
-		query = `SELECT o.day, ` + sqlWasted + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ? GROUP BY o.day`
+		query = `SELECT o.day, ` + sqlWasted + ` FROM outcomes o WHERE o.day >= ? AND o.day <= ?` + of + ` GROUP BY o.day`
 	case "installs":
 		query = `SELECT day, CAST(COUNT(DISTINCT install_id) AS DOUBLE PRECISION) FROM reports
-			WHERE day >= ? AND day <= ? GROUP BY day`
+			WHERE day >= ? AND day <= ?` + rf + ` GROUP BY day`
 	case "pings":
 		query = `SELECT day, CAST(COALESCE(SUM(pings_sent), 0) AS DOUBLE PRECISION) FROM reports
-			WHERE day >= ? AND day <= ? GROUP BY day`
+			WHERE day >= ? AND day <= ?` + rf + ` GROUP BY day`
 	default:
 		return nil, fmt.Errorf("unknown metric %q", metric)
 	}
-	rows, err := s.db.QueryContext(ctx, s.q(query), rg.From, rg.To)
+	rows, err := s.db.QueryContext(ctx, s.q(query), append([]any{rg.From, rg.To}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -406,12 +624,14 @@ func (s *Store) Breakdown(ctx context.Context, rg Range, by string) ([]Breakdown
 	if !ok {
 		return nil, fmt.Errorf("unknown dimension %q", by)
 	}
+	of, fargs := rg.established("o.install_id")
+	rf, _ := rg.established("r.install_id")
 	var query string
 	if by == "model" || by == "harness" {
 		// Pings here are those attributed to the closed outcomes.
 		query = `SELECT o.` + col + `, COUNT(DISTINCT o.install_id), ` + sqlSaved + `, ` + sqlWasted + `, ` + sqlNet + `,
 			CAST(COALESCE(SUM(o.pings), 0) AS BIGINT)
-			FROM outcomes o WHERE o.day >= ? AND o.day <= ? GROUP BY o.` + col
+			FROM outcomes o WHERE o.day >= ? AND o.day <= ?` + of + ` GROUP BY o.` + col
 	} else {
 		// Pings come from the reports; money from their outcomes.
 		query = `SELECT r.` + col + `, COUNT(DISTINCT r.install_id),
@@ -421,12 +641,13 @@ func (s *Store) Breakdown(ctx context.Context, rg Range, by string) ([]Breakdown
 				SELECT o.install_id, o.day, ` + sqlSaved + ` AS saved, ` + sqlWasted + ` AS wasted, ` + sqlNet + ` AS net
 				FROM outcomes o WHERE o.day >= ? AND o.day <= ? GROUP BY o.install_id, o.day
 			) m ON m.install_id = r.install_id AND m.day = r.day
-			WHERE r.day >= ? AND r.day <= ? GROUP BY r.` + col
+			WHERE r.day >= ? AND r.day <= ?` + rf + ` GROUP BY r.` + col
 	}
 	args := []any{rg.From, rg.To}
 	if by != "model" && by != "harness" {
 		args = append(args, rg.From, rg.To)
 	}
+	args = append(args, fargs...)
 	rows, err := s.db.QueryContext(ctx, s.q(query), args...)
 	if err != nil {
 		return nil, err
