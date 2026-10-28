@@ -14,10 +14,16 @@
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
   <!-- loop: an almost-closed ring with an arrowhead at its end -->
-  <path d="M 128 44 A 84 84 0 1 1 52.6 91.2" fill="none" stroke="#7fd1c7"
+  <!-- The ring is centred on (128,128), r 84, and runs clockwise from the
+       top to 206°. The head's base is centred on that end point, across the
+       ring, and its tip follows the tangent; the stroke ends just inside it. -->
+  <path d="M 128 44 A 84 84 0 1 1 55.3 86.0" fill="none" stroke="#7fd1c7"
         stroke-width="14" stroke-linecap="round"/>
-  <path d="M 30 92 L 54 66 L 70 100 Z" fill="#7fd1c7"/>
-  <!-- flame -->
+  <path d="M 36.3 83.3 L 64.8 66.0 L 68.7 99.1 Z" fill="#7fd1c7" stroke="#7fd1c7"
+        stroke-width="3" stroke-linejoin="round"/>
+  <!-- flame: its painted area's centre of mass is (128.9,144.8) as drawn
+       (the bulb carries the weight); move that onto the ring's centre. -->
+  <g transform="translate(128 128) scale(0.9) translate(-128.9 -144.8)">
   <path d="M 128 72
            C 140 98 170 112 170 150
            C 170 176 151 194 128 194
@@ -30,4 +36,5 @@
            C 150 181 140 190 128 190
            C 116 190 106 181 106 168
            C 106 156 116 150 128 132 Z" fill="#ffe7a3"/>
+  </g>
 </svg>
