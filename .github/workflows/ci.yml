@@ -138,7 +138,7 @@ jobs:
           name: ui
       - name: Tools
         run: |
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
           sudo apt-get update -qq && sudo apt-get install -y -qq nsis
       - name: deb, rpm, arch, AppImage, Windows, archives (dev build)
         run: make dist-linux checksums

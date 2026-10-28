@@ -17,7 +17,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib.sh
 . "${HERE}/../lib.sh"
 
-command -v nfpm >/dev/null 2>&1 || die "nfpm not found: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"
+command -v nfpm >/dev/null 2>&1 || die "nfpm not found: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3"
 
 formats=("$@")
 [ ${#formats[@]} -gt 0 ] || formats=(deb rpm arch)
