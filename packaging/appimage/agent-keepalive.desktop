@@ -6,5 +6,6 @@ Comment=Keep the prompt caches of your Claude Code and Codex sessions warm
 Exec=agent-keepalive
 Icon=agent-keepalive
 Terminal=false
+StartupWMClass=agent-keepalive-desktop
 Categories=Development;Utility;
 X-AppImage-Name=agent-keepalive

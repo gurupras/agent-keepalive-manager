@@ -1,7 +1,8 @@
 #!/bin/sh
 # Runs as root after the payload is in place. If the user at the console has
 # the server running, restart it, so the version running is the one just
-# installed (this is how a self-update through Installer finishes).
+# installed, and show the app (this is how a self-update through Installer
+# finishes). An open window rides out the restart.
 # Best-effort: never fails the installation.
 BIN=/usr/local/bin/agent-keepalive
 user="$(stat -f %Su /dev/console 2>/dev/null)"
@@ -9,5 +10,6 @@ user="$(stat -f %Su /dev/console 2>/dev/null)"
 uid="$(id -u "$user" 2>/dev/null)" || exit 0
 pgrep -u "$uid" -f "$BIN" >/dev/null 2>&1 || exit 0
 launchctl asuser "$uid" sudo -u "$user" "$BIN" stop >/dev/null 2>&1
-launchctl asuser "$uid" sudo -u "$user" "$BIN" open >/dev/null 2>&1 &
+launchctl asuser "$uid" sudo -u "$user" "$BIN" open --no-browser >/dev/null 2>&1
+launchctl asuser "$uid" sudo -u "$user" open -a /Applications/agent-keepalive.app >/dev/null 2>&1 &
 exit 0

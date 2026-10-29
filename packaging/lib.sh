@@ -36,6 +36,44 @@ ensure_hub_bin() {
   printf '%s\n' "$out"
 }
 
+# ensure_desktop <goos> <goarch>: print the path of the desktop window for
+# that target (scripts/build-desktop.sh), building it when it is missing and
+# this machine can. Prints nothing, and the package is made without the
+# window (`agent-keepalive app` then opens a browser), when DESKTOP=none, or
+# when DESKTOP=optional and it is missing; otherwise a missing window is an
+# error. CI builds the windows on their own runners and puts them in bin/desktop.
+ensure_desktop() {
+  local goos="$1" goarch="$2" ext=""
+  [ "${DESKTOP:-}" = none ] && return 0
+  [ "$goos" = windows ] && ext=".exe"
+  local out="${PKG_ROOT}/bin/desktop/${goos}_${goarch}/agent-keepalive-desktop${ext}"
+  if [ "${REBUILD:-0}" = 1 ] || [ ! -s "$out" ]; then
+    if can_build_desktop "$goos" "$goarch"; then
+      "${PKG_ROOT}/scripts/build-desktop.sh" "$goos" "$goarch" "$out" >&2
+    fi
+  fi
+  if [ -s "$out" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  if [ "${DESKTOP:-}" = optional ]; then
+    log "no desktop window for ${goos}/${goarch}: packaging without it"
+    return 0
+  fi
+  die "no desktop window at ${out#"${PKG_ROOT}"/}: build it on ${goos} (scripts/build-desktop.sh ${goos} ${goarch}), or set DESKTOP=optional or DESKTOP=none"
+}
+
+# can_build_desktop <goos> <goarch>: this machine has cargo and can build the
+# window for that target (see scripts/build-desktop.sh).
+can_build_desktop() {
+  command -v cargo >/dev/null 2>&1 || return 1
+  local os arch
+  case "$(uname -s)" in Linux) os=linux;; Darwin) os=darwin;; MINGW*|MSYS*|CYGWIN*) os=windows;; *) return 1;; esac
+  case "$(uname -m)" in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; *) return 1;; esac
+  [ "$1" = "$os" ] || return 1
+  [ "$os" != linux ] || [ "$2" = "$arch" ]
+}
+
 # Architecture spellings: Go (amd64/arm64) -> the kernel's (x86_64/aarch64)
 # and Windows' (x64/arm64).
 uname_arch() { case "$1" in amd64) echo x86_64;; arm64) echo aarch64;; *) die "unknown arch $1";; esac; }

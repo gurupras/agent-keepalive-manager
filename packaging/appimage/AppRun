@@ -1,8 +1,9 @@
 #!/bin/sh
-# AppImage entry point. Running the AppImage is `agent-keepalive open`: start
-# the server in the background if none is running and open the UI. Arguments
-# pass through, so `./agent-keepalive-….AppImage status` runs `status` and any
-# other argument goes to `open`.
+# AppImage entry point. Running the AppImage is `agent-keepalive app`: start
+# the server in the background if none is running and open the desktop window
+# (or a browser, when this machine has no WebKitGTK 4.1). Arguments pass
+# through, so `./agent-keepalive-….AppImage serve` runs the server alone and
+# `open` the UI in a browser; any other argument goes to `app`.
 #
 # The updater recognises the AppImage by $APPIMAGE (set by the runtime) and
 # replaces that file, so updating needs no root.
@@ -10,7 +11,7 @@ HERE="$(dirname "$(readlink -f "$0")")"
 BIN="${HERE}/usr/bin/agent-keepalive"
 
 case "${1:-}" in
-  serve|status|open|stop|update|metrics|version|help|-h|--help)
+  app|serve|status|open|stop|update|metrics|version|help|-h|--help)
     exec "$BIN" "$@" ;;
 esac
-exec "$BIN" open "$@"
+exec "$BIN" app "$@"

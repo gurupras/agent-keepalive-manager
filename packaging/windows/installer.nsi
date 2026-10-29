@@ -5,14 +5,17 @@
 ;
 ;   setup.exe                interactive
 ;   setup.exe /S             silent install (keeps the current start-at-login choice)
-;   setup.exe /S /UPDATE     what the self-updater runs: stop the running server,
-;                            replace the files, start it again with `open`
+;   setup.exe /S /UPDATE     what the self-updater runs: stop the running server
+;                            and window, replace the files, open the window again
 ;   uninstall.exe /S         silent uninstall
 ;
 ; Build (build-windows.sh passes these):
 ;   makensis -DVERSION=1.2.0 -DFILEVERSION=1.2.0.0 -DARCH=x64|arm64
 ;            -DBINARY=<path to agent-keepalive.exe> -DOUTFILE=<setup.exe>
-;            -DICON=<.ico> -DLICENSEFILE=<LICENSE> [-DSIGNCMD=<command>] installer.nsi
+;            -DICON=<.ico> -DLICENSEFILE=<LICENSE> [-DDESKTOP=<agent-keepalive-desktop.exe>]
+;            [-DSIGNCMD=<command>] installer.nsi
+;
+; Without DESKTOP the setup has no desktop window, and `app` opens a browser.
 
 Unicode true
 ManifestDPIAware true
@@ -37,6 +40,7 @@ SetCompressor /SOLID lzma
 
 !define APPNAME "agent-keepalive"
 !define EXE "agent-keepalive.exe"
+!define DESKTOPEXE "agent-keepalive-desktop.exe"
 !define UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 !define RUNKEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
@@ -77,8 +81,8 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026 Guru Prasad Srinivasa. MIT 
 
 Var Update
 
-; Stop a running server before its executable is replaced or removed.
-; `stop` exits 0 when nothing is running.
+; Stop a running server and window before their executables are replaced or
+; removed. `stop` exits 0 when nothing is running.
 !macro StopServer
   ${If} ${FileExists} "$INSTDIR\${EXE}"
     nsExec::Exec '"$INSTDIR\${EXE}" stop'
@@ -90,13 +94,15 @@ Var Update
     ReadEnvStr $1 USERNAME
     nsExec::Exec 'taskkill /F /T /FI "USERNAME eq $1" /IM ${EXE}'
     Pop $0
+    nsExec::Exec 'taskkill /F /T /FI "USERNAME eq $1" /IM ${DESKTOPEXE}'
+    Pop $0
     Sleep 500
   ${EndIf}
 !macroend
 
 
 Function LaunchApp
-  Exec '"$INSTDIR\${EXE}" open'
+  Exec '"$INSTDIR\${EXE}" app'
 FunctionEnd
 
 Section "${APPNAME}" SecMain
@@ -114,10 +120,13 @@ Section "${APPNAME}" SecMain
     File "/oname=${EXE}" "${BINARY}"
   ${EndIf}
   SetOverwrite on
+  !ifdef DESKTOP
+    File "/oname=${DESKTOPEXE}" "${DESKTOP}"
+  !endif
   File "/oname=agent-keepalive.ico" "${ICON}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
-  CreateShortcut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${EXE}" "open" "$INSTDIR\agent-keepalive.ico" 0 SW_SHOWMINIMIZED "" "Open ${APPNAME}"
+  CreateShortcut "$SMPROGRAMS\${APPNAME}.lnk" "$INSTDIR\${EXE}" "app" "$INSTDIR\agent-keepalive.ico" 0 SW_SHOWNORMAL "" "Open ${APPNAME}"
 
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayName" "${APPNAME}"
   WriteRegStr HKCU "${UNINSTKEY}" "DisplayVersion" "${VERSION}"
@@ -143,12 +152,12 @@ Section "-finish"
     DeleteRegValue HKCU "${RUNKEY}" "${APPNAME}"
   ${EndIf}
   ${If} $Update == 1
-    Exec '"$INSTDIR\${EXE}" open'
+    Exec '"$INSTDIR\${EXE}" app'
   ${EndIf}
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The ${APPNAME} program and a Start-menu shortcut."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "The ${APPNAME} program, its window and a Start-menu shortcut."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecLogin} "Start the ${APPNAME} server in the background when you sign in."
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
@@ -179,6 +188,7 @@ FunctionEnd
 Section "Uninstall"
   !insertmacro StopServer
   Delete "$INSTDIR\${EXE}"
+  Delete "$INSTDIR\${DESKTOPEXE}"
   Delete "$INSTDIR\agent-keepalive.ico"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"

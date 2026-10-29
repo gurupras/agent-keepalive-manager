@@ -8,7 +8,8 @@
 #      default is packaging/repository/keys/agent-keepalive.asc),
 #      PACKAGE_MAINTAINER.
 #
-# Each package carries a binary linked with its own install kind, and a
+# Each package carries a binary linked with its own install kind, the desktop
+# window (packaging/lib.sh ensure_desktop; DESKTOP=none leaves it out), and a
 # postinstall that registers the profile's REPO_URL repository with the key
 # shipped in the package.
 set -euo pipefail
@@ -40,6 +41,7 @@ for fmt in "${formats[@]}"; do
     rm -rf "$stage"; mkdir -p "$stage"
 
     install -m 0755 "$bin" "${stage}/agent-keepalive"
+    desktop="$(ensure_desktop linux "$goarch")"
     install -m 0644 "${HERE}/agent-keepalive.desktop" "${HERE}/agent-keepalive.service" \
       "${HERE}/nfpm.yaml" "$stage/"
     install -m 0644 "${PKG_ROOT}/packaging/icons/agent-keepalive.svg" \
@@ -65,6 +67,10 @@ for fmt in "${formats[@]}"; do
       pkgversion="${VERSION//-/}" schema=none
     else
       pkgversion="$VERSION" schema=semver
+    fi
+    if [ -n "$desktop" ]; then
+      install -m 0755 "$desktop" "${stage}/agent-keepalive-desktop"
+      cat "${HERE}/nfpm-desktop.yaml" >> "${stage}/nfpm.yaml"
     fi
     subst "${stage}/nfpm.yaml" "PKGVERSION=${pkgversion}" "SCHEMA=${schema}" "ARCH=${goarch}" \
       "MAINTAINER=${maintainer}" "VENDOR=${vendor:-agent-keepalive}" \

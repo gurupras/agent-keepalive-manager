@@ -2,7 +2,11 @@
 # build-windows.sh — build the Windows setup and portable executables:
 #
 #   agent-keepalive-V-setup-{x64,arm64}.exe      NSIS installer (windows-setup)
-#   agent-keepalive-V-portable-{x64,arm64}.exe   the bare binary (windows-portable)
+#   agent-keepalive-V-portable-{x64,arm64}.exe   the binary with the desktop window
+#                                                built in (windows-portable)
+#
+# The desktop window (packaging/lib.sh ensure_desktop) is built on Windows;
+# put it in bin/desktop/windows_<arch>/ first, or set DESKTOP=none.
 #
 #   packaging/windows/build-windows.sh [setup] [portable]   (default: both)
 #
@@ -48,7 +52,18 @@ for goarch in $(arches); do
   for w in "${what[@]}"; do
     case "$w" in
       portable)
-        bin="$(ensure_bin windows-portable windows "$goarch")"
+        desktop="$(ensure_desktop windows "$goarch")"
+        if [ -n "$desktop" ]; then
+          # Signed before it is built in: the portable exe writes it out and runs it.
+          embed="${PKG_ROOT}/bin/stage/windows-portable_${goarch}/agent-keepalive-desktop.exe"
+          mkdir -p "$(dirname "$embed")"
+          install -m 0755 "$desktop" "$embed"
+          "${HERE}/sign.sh" "$embed"
+          bin="${PKG_ROOT}/bin/windows-portable/windows_${goarch}/agent-keepalive.exe"
+          DESKTOP_EMBED="$embed" "${PKG_ROOT}/scripts/build-go.sh" windows "$goarch" windows-portable "$bin" >&2
+        else
+          bin="$(ensure_bin windows-portable windows "$goarch")"
+        fi
         out="${DIST}/agent-keepalive-${VERSION}-portable-${warch}.exe"
         install -m 0755 "$bin" "$out"
         "${HERE}/sign.sh" "$out"
@@ -60,12 +75,18 @@ for goarch in $(arches); do
         rm -rf "$stage"; mkdir -p "$stage"
         install -m 0755 "$bin" "${stage}/agent-keepalive.exe"
         "${HERE}/sign.sh" "${stage}/agent-keepalive.exe"
+        desktop="$(ensure_desktop windows "$goarch")"
         out="${DIST}/agent-keepalive-${VERSION}-setup-${warch}.exe"
         args=(-V2 -NOCD
           "-DVERSION=${VERSION}" "-DFILEVERSION=${fileversion}" "-DARCH=${warch}"
           "-DBINARY=${stage}/agent-keepalive.exe" "-DOUTFILE=${out}"
           "-DICON=${PKG_ROOT}/packaging/icons/agent-keepalive.ico"
           "-DLICENSEFILE=${PKG_ROOT}/LICENSE")
+        if [ -n "$desktop" ]; then
+          install -m 0755 "$desktop" "${stage}/agent-keepalive-desktop.exe"
+          "${HERE}/sign.sh" "${stage}/agent-keepalive-desktop.exe"
+          args+=("-DDESKTOP=${stage}/agent-keepalive-desktop.exe")
+        fi
         [ "$signing" -eq 1 ] && args+=("-DSIGNCMD=${HERE}/sign.sh")
         ( cd "$HERE" && makensis_run "${args[@]}" "${HERE}/installer.nsi" )
         [ -s "$out" ] || die "makensis produced no $(basename "$out")"

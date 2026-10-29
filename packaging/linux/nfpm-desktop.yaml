@@ -1,0 +1,25 @@
+# Appended to nfpm.yaml (whose contents: list it ends) by build-packages.sh
+# when the build has the desktop window.
+  - src: ./agent-keepalive-desktop
+    dst: /usr/lib/agent-keepalive/agent-keepalive-desktop
+    file_info: { mode: 0755 }
+
+# The window's libraries. Recommended, not required, on deb and rpm, so a
+# server-only install can leave them out (apt --no-install-recommends, dnf
+# --setopt=install_weak_deps=False); `agent-keepalive app` then opens a
+# browser. rpm names the libraries, which Fedora and openSUSE package under
+# different names. pacman never installs optional dependencies, so Arch
+# requires them.
+overrides:
+  deb:
+    recommends:
+      - libwebkit2gtk-4.1-0
+      - libgtk-3-0
+  rpm:
+    recommends:
+      - libwebkit2gtk-4.1.so.0()(64bit)
+      - libgtk-3.so.0()(64bit)
+  archlinux:
+    depends:
+      - webkit2gtk-4.1
+      - gtk3

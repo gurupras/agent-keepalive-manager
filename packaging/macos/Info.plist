@@ -5,15 +5,16 @@
   <key>CFBundleName</key><string>agent-keepalive</string>
   <key>CFBundleDisplayName</key><string>agent-keepalive</string>
   <key>CFBundleIdentifier</key><string>@IDENT@</string>
-  <key>CFBundleExecutable</key><string>agent-keepalive</string>
+  <key>CFBundleExecutable</key><string>agent-keepalive-desktop</string>
   <key>CFBundleIconFile</key><string>agent-keepalive</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>@CORE_VERSION@</string>
   <key>CFBundleVersion</key><string>@CORE_VERSION@</string>
   <key>CFBundleGetInfoString</key><string>agent-keepalive @VERSION@</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
-  <!-- No Dock icon or menu bar: the launcher starts the server and opens the browser. -->
-  <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- The window shows the server's page at http://127.0.0.1. -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict>
 </plist>

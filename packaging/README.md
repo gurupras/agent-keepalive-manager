@@ -7,6 +7,7 @@ Scripts that turn the Go binaries into the release artifacts listed in [docs/rel
 | `linux/build-packages.sh [deb] [rpm] [arch]` | `.deb`, `.rpm`, `.pkg.tar.zst` (nfpm) | Linux |
 | `appimage/build-appimage.sh` | `.AppImage` x86_64 + aarch64 | Linux x86_64 |
 | `windows/build-windows.sh [setup] [portable]` | NSIS setup and portable `.exe`, x64 + arm64 | Linux (makensis, or Docker) |
+| `../scripts/build-desktop.sh <goos> <goarch>` | the desktop window, `bin/desktop/<goos>_<goarch>/agent-keepalive-desktop[.exe]` | that OS (cargo; Linux: `libwebkit2gtk-4.1-dev`) |
 | `macos/build-pkg.sh` | `.pkg` x64 + arm64 | macOS |
 | `archives.sh [--hub]` | `.tar.gz` / `.zip` archives, hub archives | anywhere |
 | `checksums.sh` | `SHA256SUMS` | anywhere |
@@ -26,6 +27,11 @@ The `Makefile` wraps them (`make deb`, `make appimage`, `make windows`, `make di
 | `ARCHES` | Go architectures to package, default `amd64 arm64` |
 | `REBUILD=1` | rebuild binaries even if `bin/<kind>/<os>_<arch>/` already has them |
 | `REPO_PUBLIC_KEY` | the repository key the Linux packages ship (default `repository/keys/agent-keepalive.asc`) |
+| `DESKTOP` | unset: every package but the archives carries the desktop window, and a missing one is an error. `optional`: package without the windows that are missing. `none`: no window anywhere |
+
+## The desktop window
+
+`desktop/` is a Tauri program built per target by `scripts/build-desktop.sh`. It links the platform's webview, so each OS builds its own (Linux natively per architecture, Windows and macOS both architectures); the packaging scripts look for it in `bin/desktop/<goos>_<goarch>/` (`lib.sh` `ensure_desktop`) and build it there when this machine can. The release workflow builds all six on their own runners and hands them to the packaging jobs. Where it goes: `/usr/lib/agent-keepalive/` in the Linux packages, `usr/bin/` in the AppImage, next to the exe in the Windows setup, built into the portable exe (`scripts/build-go.sh` with `DESKTOP_EMBED`), and as the executable of the macOS app bundle.
 
 ## Install kinds
 
@@ -33,7 +39,7 @@ Every artifact carries a binary linked with its own install kind (`scripts/build
 
 ## The Linux packages
 
-`linux/nfpm.yaml` is rendered per format and architecture into `bin/stage/`. The packages install `/usr/bin/agent-keepalive`, the desktop entry (`agent-keepalive open`), the icon, a systemd **user** unit that is not enabled, and the repository key. `postinstall.sh.in` registers the profile's `REPO_URL` repository (opt out: `AGENT_KEEPALIVE_INSTALL_NO_REPOSITORY=1` or `/etc/agent-keepalive/no-repository`), and `postremove.sh.in` removes what it registered on a real removal. Without a committed repository key, the packages register nothing.
+`linux/nfpm.yaml` is rendered per format and architecture into `bin/stage/`. The packages install `/usr/bin/agent-keepalive`, the desktop window in `/usr/lib/agent-keepalive/` (with `nfpm-desktop.yaml`'s WebKitGTK dependencies), the desktop entry (`agent-keepalive app`), the icon, a systemd **user** unit that is not enabled, and the repository key. `postinstall.sh.in` registers the profile's `REPO_URL` repository (opt out: `AGENT_KEEPALIVE_INSTALL_NO_REPOSITORY=1` or `/etc/agent-keepalive/no-repository`), and `postremove.sh.in` removes what it registered on a real removal. Without a committed repository key, the packages register nothing.
 
 ## Signing
 

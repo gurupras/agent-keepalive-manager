@@ -23,10 +23,23 @@ homepage: "@HOMEPAGE@"
 license: MIT
 description: |
   Keeps the provider prompt cache of chosen Claude Code and Codex CLI sessions
-  warm. A local server with a web UI discovers the sessions on this machine,
-  pings the ones you choose just before their cache expires, and keeps a
-  ledger of what that cost and saved.
+  warm. A local server, with a desktop window and a web UI, discovers the
+  sessions on this machine, pings the ones you choose just before their
+  cache expires, and keeps a ledger of what that cost and saved.
 
+scripts:
+  postinstall: ./postinstall.sh
+  postremove: ./postremove.sh
+
+# pacman runs post_upgrade, not post_install, on an upgrade; registration is
+# idempotent, so the same script serves both.
+archlinux:
+  packager: "@MAINTAINER@"
+  scripts:
+    postupgrade: ./postinstall.sh
+
+# Last, so build-packages.sh can append the desktop window's entries
+# (nfpm-desktop.yaml).
 contents:
   - src: ./agent-keepalive
     dst: /usr/bin/agent-keepalive
@@ -56,14 +69,3 @@ contents:
   - src: ./LICENSE
     dst: /usr/share/licenses/agent-keepalive/LICENSE
     file_info: { mode: 0644 }
-
-scripts:
-  postinstall: ./postinstall.sh
-  postremove: ./postremove.sh
-
-# pacman runs post_upgrade, not post_install, on an upgrade; registration is
-# idempotent, so the same script serves both.
-archlinux:
-  packager: "@MAINTAINER@"
-  scripts:
-    postupgrade: ./postinstall.sh

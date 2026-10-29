@@ -97,7 +97,7 @@ jobs:
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           shellcheck -x -P SCRIPTDIR -S warning scripts/*.sh packaging/*.sh packaging/*/*.sh packaging/appimage/AppRun \
-            packaging/macos/postinstall packaging/macos/launcher.sh
+            packaging/macos/postinstall
           # The package scripts are rendered from templates; check them as sh.
           shellcheck -s sh -S warning packaging/linux/postinstall.sh.in packaging/linux/postremove.sh.in
       - name: actionlint
@@ -122,9 +122,55 @@ jobs:
       - name: Six targets, public profile
         run: PROFILE=profiles/public.env make cross
 
+  desktop:
+    name: Desktop window (${{ matrix.goos }}/${{ matrix.goarch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04: the oldest glibc and WebKitGTK 4.1 the packages support.
+          - { os: ubuntu-22.04, goos: linux, goarch: amd64 }
+          - { os: windows-latest, goos: windows, goarch: amd64 }
+          - { os: macos-latest, goos: darwin, goarch: arm64 }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: WebKitGTK
+        if: matrix.goos == 'linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            desktop/target
+          key: desktop-${{ matrix.os }}-${{ hashFiles('desktop/Cargo.lock') }}
+          restore-keys: desktop-${{ matrix.os }}-
+      - name: rustfmt
+        if: matrix.goos == 'linux'
+        working-directory: desktop
+        run: cargo fmt --check
+      - name: clippy and tests
+        working-directory: desktop
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+      - name: Build
+        run: scripts/build-desktop.sh ${{ matrix.goos }} ${{ matrix.goarch }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: bin/desktop/
+          retention-days: 3
+
   packaging:
     name: Packaging smoke test
-    needs: ui
+    needs: [ui, desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -136,22 +182,31 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: ui
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: bin/desktop
+          merge-multiple: true
       - name: Tools
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.46.3
           sudo apt-get update -qq && sudo apt-get install -y -qq nsis
+      # CI builds the windows for amd64 only; the arm64 packages go without.
       - name: deb, rpm, arch, AppImage, Windows, archives (dev build)
-        run: make dist-linux checksums
+        run: DESKTOP=optional make dist-linux checksums
       - name: Install and run the packages
         run: |
           set -x
           v="$(scripts/version.sh)"
-          docker run --rm -v "$PWD/dist:/dist:ro" debian:stable-slim sh -c \
-            "apt-get update -qq && apt-get install -y -qq /dist/agent-keepalive_${v}_amd64.deb >/dev/null && agent-keepalive version && test -f /usr/lib/systemd/user/agent-keepalive.service && apt-get remove -y -qq agent-keepalive >/dev/null"
+          # The window's --version runs before it opens one, so it only needs
+          # its libraries: it checks that the package pulled them in.
+          w=/usr/lib/agent-keepalive/agent-keepalive-desktop
+          docker run --rm -v "$PWD/dist:/dist:ro" -e DEBIAN_FRONTEND=noninteractive debian:stable-slim sh -c \
+            "apt-get update -qq && apt-get install -y -qq /dist/agent-keepalive_${v}_amd64.deb >/dev/null && agent-keepalive version && $w --version && test -f /usr/lib/systemd/user/agent-keepalive.service && apt-get remove -y -qq agent-keepalive >/dev/null"
           docker run --rm -v "$PWD/dist:/dist:ro" fedora:latest sh -c \
-            "dnf install -y -q /dist/agent-keepalive-${v}-1.x86_64.rpm && agent-keepalive version && dnf remove -y -q agent-keepalive"
+            "dnf install -y -q /dist/agent-keepalive-${v}-1.x86_64.rpm && agent-keepalive version && $w --version && dnf remove -y -q agent-keepalive"
           docker run --rm -v "$PWD/dist:/dist:ro" archlinux:latest sh -c \
-            "pacman -U --noconfirm /dist/agent-keepalive-${v}-1-x86_64.pkg.tar.zst >/dev/null && agent-keepalive version && pacman -R --noconfirm agent-keepalive >/dev/null"
+            "pacman -Sy --noconfirm >/dev/null && pacman -U --noconfirm /dist/agent-keepalive-${v}-1-x86_64.pkg.tar.zst >/dev/null && agent-keepalive version && $w --version && pacman -R --noconfirm agent-keepalive >/dev/null"
           "dist/agent-keepalive-${v}-x86_64.AppImage" --appimage-extract-and-run version
       - uses: actions/upload-artifact@v7
         with:

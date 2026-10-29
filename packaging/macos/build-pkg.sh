@@ -4,7 +4,8 @@
 #
 # The package installs
 #   /usr/local/bin/agent-keepalive               the program (install kind macos-pkg)
-#   /Applications/agent-keepalive.app            a launcher that runs `agent-keepalive open`
+#   /Applications/agent-keepalive.app            the desktop window (packaging/lib.sh
+#                                                ensure_desktop), which starts the server
 #
 # Env: PROFILE, VERSION, ARCHES, DIST, and optionally, for a signed and
 # notarized package (each step is skipped with a message when unset):
@@ -63,7 +64,10 @@ for goarch in $(arches); do
   mkdir -p "${app}/Contents/MacOS" "${app}/Contents/Resources"
   install -m 0644 "${HERE}/Info.plist" "${app}/Contents/Info.plist"
   subst "${app}/Contents/Info.plist" "VERSION=${VERSION}" "CORE_VERSION=${core}" "IDENT=${IDENT}"
-  install -m 0755 "${HERE}/launcher.sh" "${app}/Contents/MacOS/agent-keepalive"
+  desktop="$(ensure_desktop darwin "$goarch")"
+  [ -n "$desktop" ] || die "the macOS app is the desktop window: it cannot be left out"
+  install -m 0755 "$desktop" "${app}/Contents/MacOS/agent-keepalive-desktop"
+  sign_code "${app}/Contents/MacOS/agent-keepalive-desktop"
   install -m 0644 "$icns" "${app}/Contents/Resources/agent-keepalive.icns"
   sign_code "$app"
 
