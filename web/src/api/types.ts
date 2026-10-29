@@ -61,6 +61,8 @@ export interface SessionView {
   cwd: string
   project: string
   title: string
+  /** the harness's own recap of the session (Claude Code's away summary) */
+  summary?: string
   model: string
   status: Status
   statusSince?: string

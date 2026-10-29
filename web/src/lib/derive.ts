@@ -1,4 +1,4 @@
-import type { Plan, SessionView, Settings } from '../api/types'
+import type { LedgerEntry, Plan, SessionView, Settings, Totals } from '../api/types'
 import { baseName, hoursLabel, parseTime } from './format'
 
 export const HOUR_PRESETS = [1, 2, 4, 8, 12, 24] as const
@@ -148,14 +148,37 @@ export interface ProjectGroup {
   id: string
   name: string
   rows: Row[]
+  /** sessions with an active or paused plan */
   kept: number
+  /** warm sessions nobody keeps warm */
   warm: number
+  /** something in it is kept or warm */
+  active: boolean
+  /** "2 kept warm · 1 warm · 4 sessions" */
+  line: string
+  /** the idle, unkept session whose cache expires first */
+  nextCold?: Row
+  /** what re-caching every warm session would cost */
+  warmValue: number
+  dot: Dot
 }
+
+export type Dot = 'kept' | 'warm' | 'cold'
 
 /** sortRows puts kept sessions first, then working, then the soonest to go cold, then cold. */
 export function sortRows (a: Row, b: Row): number {
   const rank = (r: Row) => r.kept || r.paused ? 0 : r.working ? 1 : r.warm ? 2 : 3
   return rank(a) - rank(b) || (rank(a) === 2 ? a.leftMs - b.leftMs : 0) || a.title.localeCompare(b.title)
+}
+
+/** coldOrder sorts cold sessions most recently used first. */
+export function coldOrder (a: Row, b: Row): number {
+  return (b.leftMs - a.leftMs) || a.title.localeCompare(b.title)
+}
+
+/** isLive: kept, paused or warm, the sessions a project page lists in full. */
+export function isLive (r: Row): boolean {
+  return r.kept || r.paused || r.warm
 }
 
 export function groupProjects (rows: Row[]): ProjectGroup[] {
@@ -164,19 +187,47 @@ export function groupProjects (rows: Row[]): ProjectGroup[] {
     const id = r.s.project || r.s.cwd || '?'
     m.set(id, [...(m.get(id) ?? []), r])
   }
-  return [...m].map(([id, list]): ProjectGroup => ({
-    id,
-    name: baseName(id),
-    rows: list.sort(sortRows),
-    kept: list.filter(r => r.kept || r.paused).length,
-    warm: list.filter(r => r.warm).length,
+  return [...m].map(([id, list]): ProjectGroup => {
+    const kept = list.filter(r => r.kept || r.paused).length
+    const warm = list.filter(r => r.warm && !r.kept && !r.paused).length
+    const n = list.length
+    return {
+      id,
+      name: baseName(id),
+      rows: list.sort(sortRows),
+      kept,
+      warm,
+      active: kept + warm > 0,
+      line: [kept && `${kept} kept warm`, warm && `${warm} warm`, `${n} session${n === 1 ? '' : 's'}`].filter(Boolean).join(' · '),
+      nextCold: list.filter(r => !r.kept && !r.working && r.leftMs > 0).sort((a, b) => a.leftMs - b.leftMs)[0],
+      warmValue: list.filter(r => r.warm).reduce((a, r) => a + r.s.costs.recache, 0),
+      dot: kept ? 'kept' : warm ? 'warm' : 'cold',
+    }
   // Projects with something kept or warm first, then alphabetical. Not by time
   // left, which changes every second and would reshuffle the list under the pointer.
-  })).sort((a, b) =>
+  }).sort((a, b) =>
     (Number(b.kept > 0) - Number(a.kept > 0)) ||
-    (Number(b.warm > 0) - Number(a.warm > 0)) ||
+    (Number(b.active) - Number(a.active)) ||
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }) ||
     a.id.localeCompare(b.id))
+}
+
+/** sumEntries totals ledger entries the way the server does (store.SumTotals). */
+export function sumEntries (es: LedgerEntry[]): Totals {
+  const t: Totals = { saved: 0, wasted: 0, net: 0, pingCost: 0, pings: 0, returns: 0, expired: 0 }
+  for (const e of es) {
+    t.net += e.net
+    t.pingCost += e.pingCost
+    t.pings += e.pings
+    if (e.outcome === 'saved') {
+      t.saved += e.net
+      t.returns++
+    } else {
+      t.wasted -= e.net
+      t.expired++
+    }
+  }
+  return t
 }
 
 /** compareVersions compares dotted versions numerically ("1.10.0" > "1.9.2"); a leading v is ignored. */

@@ -1,16 +1,25 @@
 # Using the UI
 
-`agent-keepalive open` opens the UI at `http://127.0.0.1:<port>/`. It has two views, **Sessions** and **Ledger**, plus **Missed** when you turn it on in Settings. Everything updates live.
+`agent-keepalive open` opens the UI at `http://127.0.0.1:<port>/`. The sidebar lists the views (**All projects**, **Sessions**, **Ledger**, and **Missed savings** when you turn it on in Settings) and every project with a live session. A dot shows each project's state: solid when something in it is kept warm, faded when something is warm, cool when everything is cold. Press <kbd>/</kbd> to filter the projects, and **Pin** a project on its page to keep it at the top. In a narrow window the sidebar folds behind the menu button. Everything updates live.
+
+Each view opens with the same strip of numbers: what the ledger booked as saved and wasted in its current range, how many sessions are kept warm and warm, and what re-caching every warm session would cost.
+
+## Projects
+
+**All projects** has one row per project: its sessions, the warm session nobody keeps warm that goes cold next, and the value of its warm cache. Projects with only cold sessions are folded away.
+
+A project's page lists its kept and warm sessions; the cold ones are folded at the bottom, since their next message re-caches either way. **Sessions** lists every session across all projects, with a search box.
 
 ## Sessions
 
-Each live Claude Code and Codex session appears once, grouped by project (its working directory). Kept sessions come first, then working ones, then the ones soonest to go cold. A row shows:
+Sessions show as a table or as cards (the toggle in the page header). Kept sessions come first, then working ones, then the ones soonest to go cold. Each shows:
 
-- the session's title and model, and its context size;
+- the session's title, its folder when that is below the project root, and Claude Code's own recap of the session when it has written one;
+- its context size; hover the info icon for what a cold return would cost (re-writing the whole context to the cache), what each ping costs, and the model;
 - the cache state: a countdown while the cache is warm, *working* while the agent is busy, or cold;
-- what a cold return would cost: re-writing the whole context to the cache at the cache-write price.
+- its plan, or **Keep warm**.
 
-Open a row for the details: process, delivery channel, last API call, when you last typed, the ping interval, the plan, and the session's ping history.
+Click a title for the details: process, delivery channel, last API call, when you last typed, the ping interval, the plan, and the session's ping history.
 
 A session shows **Can't be pinged** when agent-keepalive has no way to reach it: a Claude Code session without a messaging socket, or a Codex session that cannot take queued messages. Discovery still works for it, but no plan can start.
 
@@ -73,4 +82,4 @@ With *Show missed savings* on in Settings, this view replays your recent transcr
 | Theme | System, light or dark. |
 | Usage reports | Whether the daily usage report is sent, and a preview of it. See [Usage reports and privacy](/metrics). |
 
-The menu also has **Check for updates**, **About** and **Quit**, which stops the server (click it twice).
+The sidebar's header has Settings, a light/dark switch, and a menu with **Check for updates**, **About** and **Quit**, which stops the server (click it twice).

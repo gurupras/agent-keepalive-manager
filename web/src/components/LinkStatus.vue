@@ -22,6 +22,6 @@ const link = computed(() => {
       <span v-if="!link.live" class="absolute inline-flex size-full animate-ping rounded-full opacity-60" :class="link.cls"></span>
       <span class="relative inline-flex size-2 rounded-full" :class="link.cls"></span>
     </span>
-    <span :class="link.live ? 'sr-only @md:not-sr-only' : ''">{{ link.text }}</span>
+    <span>{{ link.text }}</span>
   </span>
 </template>

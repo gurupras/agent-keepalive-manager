@@ -43,7 +43,7 @@ features:
 ---
 
 <div class="screenshot">
-  <img src="/screenshot.png" alt="The agent-keepalive UI: running sessions grouped by project, each with its cache countdown and keepalive plan">
+  <img src="/screenshot.png" alt="The agent-keepalive UI: a sidebar of projects, and every running session with its cache countdown and keepalive plan">
 </div>
 
 <div class="home-section vp-doc">

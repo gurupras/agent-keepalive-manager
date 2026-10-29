@@ -1,46 +1,59 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
-import ProjectGroup from '../components/ProjectGroup.vue'
-import { projects, rows } from '../composables/ui'
+import PageHeader from '../components/PageHeader.vue'
+import SessionCard from '../components/SessionCard.vue'
+import SessionTable from '../components/SessionTable.vue'
+import StatsStrip from '../components/StatsStrip.vue'
+import ViewToggle from '../components/ViewToggle.vue'
+import { rows, viewMode } from '../composables/ui'
+import { coldOrder, isLive, sortRows } from '../lib/derive'
 import { store } from '../api/store'
-import { money } from '../lib/format'
 
-const kept = computed(() => rows.value.filter(r => r.kept).length)
-const paused = computed(() => rows.value.filter(r => r.paused).length)
-const blocked = computed(() => rows.value.filter(r => r.plan?.blocked).length)
-/** what re-caching every warm, unkept session would cost if it went cold */
-const atRisk = computed(() => rows.value.filter(r => r.warm && !r.kept && !r.working).reduce((a, r) => a + r.s.costs.recache, 0))
+// Every session across all projects: kept first, then working, then the
+// soonest to go cold, then cold sessions by most recently used.
+const query = ref('')
+const all = computed(() => [
+  ...rows.value.filter(isLive).sort(sortRows),
+  ...rows.value.filter(r => !isLive(r)).sort(coldOrder),
+])
+const shown = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  if (!q) return all.value
+  return all.value.filter(r => [r.title, r.s.summary, r.s.project, r.s.cwd, r.s.model, r.s.id].some(f => f?.toLowerCase().includes(q)))
+})
+const subtitle = computed(() => {
+  const n = all.value.length
+  const w = all.value.filter(isLive).length
+  const p = new Set(all.value.map(r => r.s.project || r.s.cwd)).size
+  return n ? `${n} session${n === 1 ? '' : 's'} in ${p} project${p === 1 ? '' : 's'} · ${w} warm` : 'No live sessions'
+})
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div v-if="rows.length" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-ink-2">
-      <span><strong class="text-ink tabular-nums">{{ rows.length }}</strong> live session{{ rows.length === 1 ? '' : 's' }}</span>
-      <span class="inline-flex items-center gap-1"><AppIcon name="lucide:flame" class="text-warm" /><strong class="text-ink tabular-nums">{{ kept }}</strong> kept warm</span>
-      <span v-if="paused" class="inline-flex items-center gap-1 text-warn"><AppIcon name="lucide:pause" /><strong class="tabular-nums">{{ paused }}</strong> paused</span>
-      <span v-if="blocked" class="inline-flex items-center gap-1 text-warn"><AppIcon name="lucide:hourglass" /><strong class="tabular-nums">{{ blocked }}</strong> blocked</span>
-      <span v-if="atRisk > 0" title="What re-caching would cost if every warm session nobody keeps warm went cold">
-        <strong class="text-ink tabular-nums">{{ money(atRisk) }}</strong> of warm cache not kept
-      </span>
-    </div>
+  <PageHeader title="Sessions" :subtitle="subtitle" :mono="false">
+    <label class="flex items-center gap-2 rounded-lg bg-surface-2 px-2.5 py-1.5 text-[13px] text-ink-2 focus-within:ring-2 focus-within:ring-accent">
+      <AppIcon name="lucide:search" class="text-ink-3" />
+      <input v-model="query" type="search" placeholder="Find a session" aria-label="Find a session" class="w-44 bg-transparent text-ink outline-none placeholder:text-ink-3" @keydown.esc.stop="query = ''" />
+    </label>
+    <ViewToggle />
+  </PageHeader>
 
+  <StatsStrip :rows="rows" />
+
+  <div class="mt-6">
     <div v-if="!store.loaded" class="flex items-center gap-2 py-16 text-ink-2" role="status">
       <AppIcon name="lucide:loader-circle" spin /> Loading sessions…
     </div>
-    <div v-else-if="store.error && !rows.length" class="card flex flex-col items-center gap-2 px-6 py-14 text-center" role="alert">
-      <AppIcon name="lucide:wifi-off" class="text-3xl text-ink-3" />
-      <h2 class="font-semibold text-ink">Can't reach agent-keepalive</h2>
-      <p class="max-w-sm text-[13px] text-ink-2">{{ store.error }}</p>
-      <p class="text-xs text-ink-2">Retrying in the background.</p>
+    <div v-else-if="!shown.length" class="card flex flex-col items-center gap-2 px-6 py-10 text-center text-[13px] text-ink-2">
+      <AppIcon :name="query ? 'lucide:search' : 'lucide:activity'" class="text-2xl text-ink-3" />
+      {{ query ? `No sessions match “${query}”.` : 'No live sessions. Claude Code and Codex sessions running on this machine show up here within a few seconds of starting.' }}
     </div>
-    <div v-else-if="!rows.length" class="card flex flex-col items-center gap-2 px-6 py-14 text-center">
-      <AppIcon name="lucide:activity" class="text-3xl text-ink-3" />
-      <h2 class="font-semibold text-ink">No live sessions</h2>
-      <p class="max-w-sm text-[13px] text-ink-2">Claude Code and Codex sessions running on this machine show up here within a few seconds of starting.</p>
+    <div v-else-if="viewMode === 'cards'" class="grid gap-3 @4xl/app:grid-cols-2">
+      <SessionCard v-for="r in shown" :key="r.key" :row="r" show-project />
     </div>
-    <div v-else class="@container space-y-4">
-      <ProjectGroup v-for="g in projects" :key="g.id" :group="g" />
+    <div v-else class="card">
+      <SessionTable :rows="shown" show-project />
     </div>
   </div>
 </template>

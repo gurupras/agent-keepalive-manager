@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/vue3-vite'
 import { expect, userEvent, within } from 'storybook/test'
 import App from './App.vue'
 import { store } from './api/store'
-import { ui } from './composables/ui'
+import { pinned, ui, viewMode } from './composables/ui'
 import { row, TITLES } from './mock/stories'
 
 const meta = {
@@ -14,8 +14,22 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-/** Sessions grouped by project, with the update toast. */
-export const Sessions: Story = {}
+/** Projects at a glance, with the update toast. */
+export const AllProjects: Story = {}
+
+export const Project: Story = { parameters: { route: '/p/' + encodeURIComponent('/home/dev/src/agent-keepalive') } }
+
+/** Every session; no update toast (this is the README screenshot). */
+export const Sessions: Story = { parameters: { route: '/sessions', mock: { update: 'none' } } }
+
+export const SessionCards: Story = {
+  parameters: { route: '/sessions' },
+  beforeEach: () => { viewMode.value = 'cards' },
+}
+
+export const Pinned: Story = {
+  beforeEach: () => { pinned.value = { '/home/dev/src/payments-api': true } },
+}
 
 export const Ledger: Story = { parameters: { route: '/ledger' } }
 
@@ -23,7 +37,14 @@ export const Missed: Story = { parameters: { route: '/missed' } }
 
 /** The app inside a 340px side panel. */
 export const NarrowPanel: Story = {
+  parameters: { route: '/sessions' },
   decorators: [() => ({ template: '<div class="h-[760px] w-[340px] overflow-auto border border-line"><story /></div>' })],
+}
+
+/** The narrow layout with its sidebar opened. */
+export const NarrowNavOpen: Story = {
+  ...NarrowPanel,
+  beforeEach: () => { ui.nav = true },
 }
 
 export const DrawerOpen: Story = {
@@ -52,12 +73,13 @@ export const NoSessions: Story = {
 
 /** Start a plan end to end against the mock backend. */
 export const StartKeepAlive: Story = {
+  parameters: { route: '/sessions' },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement)
-    const item = canvas.getByRole('button', { name: TITLES.idle }).closest('li')!
+    const item = canvas.getByRole('button', { name: TITLES.idle }).closest('tr')!
     await userEvent.click(within(item).getByRole('button', { name: /Keep warm/ }))
-    await userEvent.click(within(item).getByRole('radio', { name: '2h' }))
-    await userEvent.click(within(item).getByRole('button', { name: 'Keep warm 2h' }))
+    await userEvent.click(canvas.getByRole('radio', { name: '2h' }))
+    await userEvent.click(canvas.getByRole('button', { name: 'Keep warm 2h' }))
     await expect(await canvas.findByText(`Keeping ${TITLES.idle} warm for 2h`)).toBeInTheDocument()
   },
 }

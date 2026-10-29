@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
+import PageHeader from '../components/PageHeader.vue'
 import StatTile from '../components/StatTile.vue'
 import { loadMissed, store } from '../api/store'
 import { baseName, dateOnly, hoursLabel, money, parseTime, shortModel, signedMoney } from '../lib/format'
@@ -11,10 +12,9 @@ onMounted(() => { if (!store.missed) loadMissed() })
 
 <template>
   <div class="@container space-y-4">
-    <div class="flex flex-wrap items-center gap-2">
-      <h1 class="mr-auto text-base font-semibold text-ink">Missed savings</h1>
+    <PageHeader title="Missed savings" subtitle="What keeping every idle session warm would have done" :mono="false">
       <button type="button" class="icon-btn" aria-label="Recalculate" title="Recalculate" @click="loadMissed"><AppIcon name="lucide:refresh-cw" /></button>
-    </div>
+    </PageHeader>
 
     <p v-if="!store.settings?.showMissed" class="card px-6 py-10 text-center text-[13px] text-ink-2">
       Missed savings are turned off.

@@ -168,6 +168,7 @@ export class MockBackend {
         cwd,
         project,
         title: fx.title,
+        summary: fx.summary,
         model: fx.model,
         status: fx.working ? 'working' : 'idle',
         statusSince: iso(t0 - (fx.working ? fx.workingMin ?? 1 : fx.idleMin) * MIN),

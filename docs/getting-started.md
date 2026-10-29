@@ -20,7 +20,7 @@ This starts the server in the background if it is not already running and opens 
 
 ## Keep a session warm
 
-1. The **Sessions** view lists every live Claude Code and Codex session, grouped by project, with its model, context size and a countdown to when its cache expires.
+1. **All projects** lists every project with a live Claude Code or Codex session; open one, or **Sessions**, to see each session with its context size and a countdown to when its cache expires.
 2. Pick a session and choose how long to keep it warm: one of the presets, a custom number of hours, or **until you stop it**, a rolling plan that every prompt you type extends by another full window. The panel shows what the plan will cost at most before you confirm.
 3. Walk away. Shortly before the cache would expire, agent-keepalive sends a ping and checks the reply in the transcript. It never pings while the session is working, and it never sends anything but its fixed ping text, which carries a `[keepalive id=…]` marker.
 4. When you come back and type, the plan carries on in the background. It ends when its time runs out, when you stop it, when the session exits, or when you switch that terminal to another conversation.

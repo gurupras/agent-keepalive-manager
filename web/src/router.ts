@@ -1,4 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import AllProjects from './views/AllProjects.vue'
+import ProjectView from './views/ProjectView.vue'
 import SessionsView from './views/SessionsView.vue'
 import LedgerView from './views/LedgerView.vue'
 import MissedView from './views/MissedView.vue'
@@ -8,7 +10,9 @@ import MissedView from './views/MissedView.vue'
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', name: 'sessions', component: SessionsView },
+    { path: '/', name: 'all', component: AllProjects },
+    { path: '/p/:id', name: 'project', component: ProjectView, props: true },
+    { path: '/sessions', name: 'sessions', component: SessionsView },
     { path: '/ledger', name: 'ledger', component: LedgerView },
     { path: '/missed', name: 'missed', component: MissedView },
     { path: '/:rest(.*)*', redirect: '/' },

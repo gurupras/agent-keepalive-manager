@@ -4,7 +4,7 @@
 import { resetStore, store, useTransport } from '../api/store'
 import { toRow, type Row } from '../lib/derive'
 import { clearToasts } from '../composables/toasts'
-import { ui } from '../composables/ui'
+import { pinned, ui, viewMode } from '../composables/ui'
 import { FROZEN_NOW, MockBackend, type MockOptions } from './server'
 
 export let backend = new MockBackend({ now: FROZEN_NOW, simulate: false, latency: 200 })
@@ -15,7 +15,9 @@ export function seed (opts: MockOptions = {}) {
   resetStore()
   useTransport(backend.transport())
   clearToasts()
-  Object.assign(ui, { drawer: null, planFor: null, settings: false, about: false })
+  Object.assign(ui, { drawer: null, planFor: null, settings: false, about: false, nav: false, search: '' })
+  viewMode.value = 'table'
+  pinned.value = {}
   const copy = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T
   store.loaded = true
   store.link = 'open'

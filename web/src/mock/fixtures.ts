@@ -23,6 +23,8 @@ export interface Fixture {
   project: string
   sub?: string
   title: string
+  /** the harness's recap, as Claude Code writes one */
+  summary?: string
   model: string
   ctx: number
   /** minutes since the last API call */
@@ -41,6 +43,7 @@ export const fixtures: Fixture[] = [
     harness: 'claude',
     project: 'agent-keepalive',
     title: 'Ping verification against transcripts',
+    summary: 'Matching each ping to its reply in the transcript; the reply-timeout path is done and the last open item is a test for duplicate ids.',
     model: 'claude-opus-5-5',
     ctx: 412_000,
     idleMin: 12,
@@ -63,6 +66,7 @@ export const fixtures: Fixture[] = [
     harness: 'claude',
     project: 'agent-keepalive',
     title: 'Ledger idempotency tests',
+    summary: 'Added tests that book each segment once even when the server restarts mid-plan. Two pass; the restart case still fails on a missing index.',
     model: 'claude-sonnet-5-5',
     ctx: 236_000,
     idleMin: 41,
@@ -72,6 +76,7 @@ export const fixtures: Fixture[] = [
     harness: 'claude',
     project: 'terminal-grid',
     title: 'Fix resize flicker on wayland',
+    summary: 'Traced the flicker to a double resize on fractional scaling. Waiting on your call between debouncing and the compositor hint.',
     model: 'claude-opus-5-5',
     ctx: 655_000,
     idleMin: 30,
@@ -108,6 +113,7 @@ export const fixtures: Fixture[] = [
     harness: 'claude',
     project: 'payments-api',
     title: 'Migrate ledger to decimal amounts',
+    summary: 'Converted amounts to integer micro-dollars and wrote the migration; next is backfilling the existing rows.',
     model: 'claude-sonnet-5-5',
     ctx: 189_000,
     idleMin: 52,
@@ -125,6 +131,7 @@ export const fixtures: Fixture[] = [
     project: 'payments-api',
     sub: 'scripts',
     title: 'One-off backfill script',
+    summary: 'Wrote a dry-run backfill for the webhook table; it reports 312 rows to fix.',
     model: 'claude-opus-5-5',
     ctx: 97_000,
     idleMin: 18,
@@ -150,6 +157,15 @@ export const fixtures: Fixture[] = [
     ctx: 52_000,
     idleMin: 8,
     humanMin: 8,
+  },
+  {
+    harness: 'claude',
+    project: 'scratch',
+    title: 'Benchmark JSON parsers',
+    model: 'claude-sonnet-5-5',
+    ctx: 64_000,
+    idleMin: 190,
+    humanMin: 190,
   },
 ]
 

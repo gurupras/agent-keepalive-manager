@@ -29,3 +29,8 @@ export const dark = computed(() => {
 watchEffect(() => {
   root.dataset.kaScheme = dark.value ? 'dark' : 'light'
 })
+
+/** toggleDark flips between light and dark, leaving "system" for an explicit choice. */
+export function toggleDark () {
+  themePref.value = dark.value ? 'light' : 'dark'
+}
