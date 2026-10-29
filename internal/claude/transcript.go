@@ -48,6 +48,9 @@ type summary struct {
 	lastAny     time.Time
 	customTitle string
 	aiTitle     string
+	// awaySummary is Claude Code's latest recap of the session, written
+	// for a user coming back to it.
+	awaySummary string
 	toolPending bool          // the latest call stopped for tool_use and no turn_duration followed
 	ttl         time.Duration // tier of the most recent cache write (0 = none seen)
 }
@@ -118,6 +121,7 @@ var (
 	patSidechain  = []byte(`"isSidechain":true`)
 	patTurnDur    = []byte(`"subtype":"turn_duration"`)
 	patCompact    = []byte(`"subtype":"compact_boundary"`)
+	patAway       = []byte(`"subtype":"away_summary"`)
 )
 
 type rawRecord struct {
@@ -130,7 +134,9 @@ type rawRecord struct {
 	IsCompactSummary bool   `json:"isCompactSummary"`
 	CustomTitle      string `json:"customTitle"`
 	AITitle          string `json:"aiTitle"`
-	Origin           *struct {
+	// Content is a system record's text (a message's is Message.Content).
+	Content json.RawMessage `json:"content"`
+	Origin  *struct {
 		Kind string `json:"kind"`
 		Name string `json:"name"`
 		Body string `json:"body"`
@@ -186,7 +192,7 @@ func (t *transcript) Line(line []byte) {
 		bytes.Contains(line, patCustom),
 		bytes.Contains(line, patAITitle):
 	case bytes.Contains(line, patSystem):
-		if !bytes.Contains(line, patTurnDur) && !bytes.Contains(line, patCompact) {
+		if !bytes.Contains(line, patTurnDur) && !bytes.Contains(line, patCompact) && !bytes.Contains(line, patAway) {
 			return
 		}
 	default:
@@ -227,6 +233,14 @@ func (t *transcript) Line(line []byte) {
 			t.cur.toolPending = false
 		case "compact_boundary":
 			t.resetHere(at)
+		case "away_summary":
+			var text string
+			if json.Unmarshal(r.Content, &text) == nil {
+				text = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), "(disable recaps in /config)"))
+				if text != "" {
+					t.cur.awaySummary = text
+				}
+			}
 		}
 	case "custom-title":
 		if r.CustomTitle != "" {

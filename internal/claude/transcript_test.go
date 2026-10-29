@@ -114,6 +114,7 @@ func TestClassifyBasic(t *testing.T) {
 	eq(t, "ttl", p.ttl, time.Hour)
 	eq(t, "toolPending", p.toolPending, true)
 	eq(t, "ai title", p.aiTitle, "Greeting")
+	eq(t, "away summary", p.awaySummary, "Greeted the user and answered a ping.")
 	eq(t, "model", p.lastModel, "claude-opus-5-5")
 	if u := tr.activity(1)[0].Usage; u.Output != 10 {
 		t.Errorf("dedup kept output %d, want the latest (10)", u.Output)

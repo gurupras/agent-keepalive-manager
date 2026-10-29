@@ -302,6 +302,7 @@ func (s *Source) session(e regEntry, procStart string, tr *tracked, loading bool
 		}
 	}
 	ss.Title = title(p.customTitle, e, p.aiTitle)
+	ss.Summary = p.awaySummary
 	ss.Model = p.lastModel
 	ss.ContextTokens = p.lastUsage.Context()
 	ss.LastCall = p.lastCall

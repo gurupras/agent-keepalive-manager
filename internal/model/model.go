@@ -115,8 +115,10 @@ type Session struct {
 	Cwd       string    `json:"cwd"`
 	Project   string    `json:"project"` // nearest VCS root above Cwd, else Cwd
 	Title     string    `json:"title"`
-	Model     string    `json:"model"`
-	Status    Status    `json:"status"`
+	// Summary is the harness's own recap of the session, when it writes one.
+	Summary string `json:"summary,omitempty"`
+	Model   string `json:"model"`
+	Status  Status `json:"status"`
 	// StatusSince is when Status last changed. A session "working" for far
 	// longer than any turn takes is reported as stale (see Blocked).
 	StatusSince time.Time `json:"statusSince,omitzero"`
