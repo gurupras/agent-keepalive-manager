@@ -1,18 +1,19 @@
 # Architecture
 
-agent-keepalive is two programs built from one Go module:
+agent-keepalive is two programs built from one Go module, and a desktop window for the first:
 
 | Program | What it is |
 |---|---|
 | `agent-keepalive` | A local server with a web UI. It discovers the Claude Code and Codex CLI sessions running on this machine and, for the sessions you choose, keeps their provider prompt cache warm. It keeps a ledger of what that cost and saved, and (unless turned off) reports usage to a hub. |
 | `agent-keepalive-hub` | The central server that receives usage reports from many installs and shows them on a dashboard. Anyone can run one; an organisation runs its own. |
+| `agent-keepalive-desktop` | The UI of `agent-keepalive` in a native window (Tauri, in Rust). It holds no state and talks only to the server's page; `agent-keepalive app` starts it. The packages, AppImage, Windows and macOS installers carry it; the archives and Homebrew do not. |
 
-Both are pure Go (`CGO_ENABLED=0`) and embed their Vue UI, so each is a single file.
+Both Go programs are pure Go (`CGO_ENABLED=0`) and embed their Vue UI, so each is a single file.
 
 ## Repository layout
 
 ```
-cmd/agent-keepalive/         the local server + CLI (serve, status, open, update, metrics, version)
+cmd/agent-keepalive/         the local server + CLI (serve, app, open, status, stop, update, metrics, version)
 cmd/agent-keepalive-hub/     the hub
 internal/
   model/                     shared types: Session, Activity, Plan, PingRecord, LedgerEntry, Settings, Event
@@ -32,6 +33,7 @@ internal/
   hub/                       the hub: ingest, storage, aggregation queries, dashboard API
 web/                         the local UI (Vue 3, Vite, Tailwind 4, TypeScript), embedded by web/embed.go
 hub/web/                     the hub dashboard (same stack), embedded by hub/web/embed.go
+desktop/                     the desktop window (Tauri 2, Rust): the server's page in a native webview
 profiles/                    distribution profiles (public.env)
 packaging/                   nfpm (deb/rpm/arch), AppImage, NSIS (setup .exe), portable .exe, macOS .pkg, repositories
 deploy/                      docker compose for the hub + downloads host
@@ -98,7 +100,7 @@ On by default (opt-out), per the profile. Reports are pseudonymous: a random ins
 
 | Install kind (recorded at install) | UI notification | Action |
 |---|---|---|
-| Windows setup, Windows portable, AppImage, archive | "vX is available" + **Update** | download, verify signature + sha256, swap the binary, restart; the UI reconnects |
+| Windows setup, Windows portable, AppImage, archive | "vX is available" + **Update** | download, verify signature + sha256, swap the binary (the portable exe carries its window; the setup replaces both), restart; the UI reconnects |
 | deb, rpm, arch, Homebrew | "vX is available" + the package-manager command (`apt`, `dnf`, `pacman`, `brew upgrade`) | packages register the signed repository (Homebrew: the tap); the package manager updates |
 | macOS pkg | **Update** | download + verify the new pkg, open Installer |
 | supervised (`--no-update`) | none | |
@@ -107,7 +109,7 @@ The feed (`latest.json`) lists every artifact with its sha256 and is signed with
 
 ## Releases
 
-A `v*` tag runs `.github/workflows/release.yml`: it builds the UIs, cross-compiles six targets, packages deb/rpm/arch (nfpm), AppImage (x86_64, aarch64), Windows setup and portable `.exe` (NSIS, built on Linux), macOS `.pkg` (on a macOS runner), a Homebrew formula pushed to the `gurupras/homebrew-tap` tap, plus `.tar.gz`/`.zip` archives and `SHA256SUMS`. It creates the GitHub Release, publishes the hub image to `ghcr.io`, uploads everything to the downloads host, signs and promotes the apt/rpm/arch repositories, and moves `latest.json` last.
+A `v*` tag runs `.github/workflows/release.yml`: it builds the UIs, builds the desktop window on Linux (x86_64 and aarch64 runners), Windows and macOS, cross-compiles six targets, packages deb/rpm/arch (nfpm), AppImage (x86_64, aarch64), Windows setup and portable `.exe` (NSIS, built on Linux), macOS `.pkg` (on a macOS runner), a Homebrew formula pushed to the `gurupras/homebrew-tap` tap, plus `.tar.gz`/`.zip` archives and `SHA256SUMS`. It creates the GitHub Release, publishes the hub image to `ghcr.io`, uploads everything to the downloads host, signs and promotes the apt/rpm/arch repositories, and moves `latest.json` last.
 
 ## Scheduler rules
 

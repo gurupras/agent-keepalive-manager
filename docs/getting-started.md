@@ -1,6 +1,6 @@
 # Getting started
 
-agent-keepalive is a small local server with a web UI. It finds the Claude Code and Codex CLI sessions running on your machine and, for the ones you choose, keeps their provider prompt cache from expiring while you are away.
+agent-keepalive is a small local server with a desktop window and a web UI. It finds the Claude Code and Codex CLI sessions running on your machine and, for the ones you choose, keeps their provider prompt cache from expiring while you are away.
 
 ## Why a warm cache matters
 
@@ -13,10 +13,12 @@ For a session with a large context, that one re-write can cost more than a long 
 Install it for your platform ([Installing](/install)), then:
 
 ```sh
-agent-keepalive open
+agent-keepalive
 ```
 
-This starts the server in the background if it is not already running and opens the UI in your browser. The desktop entry, the Start-menu shortcut and the macOS app do the same thing. The server listens on `127.0.0.1` only, on port 4344 or the next free one.
+This starts the server in the background if it is not already running and opens the agent-keepalive window. The desktop entry, the Start-menu shortcut and the macOS app do the same thing. The server listens on `127.0.0.1` only, on port 4344 or the next free one, and keeps running when you close the window; **Quit** in the window's menu stops it.
+
+Prefer a browser? `agent-keepalive open` starts the server the same way and opens the UI in your browser instead. `agent-keepalive serve` runs only the server, in the foreground. The `.tar.gz`/`.zip` archives and Homebrew have no window: there, `agent-keepalive` runs `serve`, and `agent-keepalive open` is how you open the UI.
 
 ## Keep a session warm
 

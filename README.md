@@ -40,10 +40,17 @@ A `.deb`, `.rpm` or Arch package installed from the download page registers the 
 ## Quick start
 
 ```sh
-agent-keepalive open
+agent-keepalive
 ```
 
-starts the server in the background if it is not running and opens the UI in your browser (the desktop entry, Start-menu shortcut and macOS app do the same). Pick a session, choose how long to keep it warm, and leave. Other commands: `serve` (foreground), `status`, `stop`, `update`, `metrics`, `version`.
+opens the agent-keepalive window, starting the server in the background if it is not running (the desktop entry, Start-menu shortcut and macOS app do the same). Pick a session, choose how long to keep it warm, and leave. Closing the window leaves the server running; **Quit** in its menu stops it.
+
+Without the window:
+
+- `agent-keepalive open`: the server, with the UI in your browser.
+- `agent-keepalive serve`: the server alone, in the foreground; the UI is at `http://127.0.0.1:4344/`.
+
+The `.tar.gz`/`.zip` archives and Homebrew are the server and web UI without the window; there, `agent-keepalive` runs `serve`. Other commands: `status`, `stop`, `update`, `metrics`, `version`.
 
 On Linux, to run the server at login: `systemctl --user enable --now agent-keepalive`.
 

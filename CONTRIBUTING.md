@@ -13,6 +13,13 @@ bin/agent-keepalive serve
 
 For UI work, `npm run dev` in `web/` (or `hub/web/`) runs Vite against a running server; `npm run mock` in `web/` runs the UI against mock data.
 
+The desktop window (`desktop/`, Tauri) needs Rust, and on Linux `libwebkit2gtk-4.1-dev`:
+
+```sh
+(cd desktop && cargo build)
+AGENT_KEEPALIVE_DESKTOP=desktop/target/debug/agent-keepalive-desktop bin/agent-keepalive app
+```
+
 ## Before you send a pull request
 
 ```sh
@@ -20,6 +27,7 @@ make test              # go test -race ./...
 make lint              # gofmt, go vet, golangci-lint
 (cd web && npm run lint && npm run build)
 (cd hub/web && npm run lint && npm run build)
+(cd desktop && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test)
 ```
 
 CI runs the same checks on Linux, macOS and Windows, plus shellcheck and actionlint for the scripts and workflows, a cross-compile of all six targets, and a packaging smoke test.
@@ -29,7 +37,7 @@ CI runs the same checks on Linux, macOS and Windows, plus shellcheck and actionl
 - Read [docs/architecture.md](docs/architecture.md) first. The scheduler rules there are requirements, each with a test; a change that touches one needs a test that shows it still holds.
 - Keep discovery read-only. agent-keepalive must never write to a session's terminal, read credential files, or log environment values.
 - Anything that changes what a usage report contains must update [docs/metrics.md](docs/metrics.md) in the same change.
-- Keep the build pure Go (`CGO_ENABLED=0`).
+- Keep the Go build pure Go (`CGO_ENABLED=0`). The desktop window is the only native code, and holds no logic beyond showing the server's page.
 - Write commit messages that say what changed and why.
 
 ## Licence

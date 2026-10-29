@@ -4,13 +4,16 @@
 agent-keepalive <command> [flags]
 ```
 
-Without a command it runs `serve`, except for the desktop installs (Windows setup and portable, macOS `.pkg`, AppImage), which run `open`. `agent-keepalive <command> -h` lists a command's flags.
+Without a command, the desktop installs (deb, rpm, Arch, AppImage, Windows setup and portable, macOS `.pkg`) run `app`, which opens the desktop window, or `serve` on a Linux machine with no display. The archives, Homebrew and dev builds run `serve`. `agent-keepalive <command> -h` lists a command's flags.
+
+To run the server and web UI without the window, name the command: `agent-keepalive serve` (in the foreground) or `agent-keepalive open` (in the background, with the UI in your browser).
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `serve` | Run the server in the foreground. |
+| `app` | Start the server in the background if none is running, then open the desktop window. Without the window installed, or when it cannot start (no WebKitGTK 4.1, no WebView2 Runtime), it opens the UI in your browser. |
 | `open` | Start the server in the background if none is running, then open the UI in your browser. |
 | `status` | Show whether a server is running, and where. |
 | `stop` | Stop the running server. |
@@ -33,6 +36,14 @@ Every command takes `--data-dir`, and finds the running server through it.
 | `--ui-addon DIR` | A directory served under `addon/`; its `addon.css` and `addon.js` are linked into the UI. |
 | `--supervised` | Run under another program: no self-update, and no Quit in the UI. |
 | `--exit-on-stdin-eof` | Stop when standard input closes, for a supervising program. |
+
+### `app` flags
+
+| Flag | |
+|---|---|
+| `--port N` | Port for a server this starts. |
+
+`AGENT_KEEPALIVE_DESKTOP` names the window's executable, or `none` to open a browser instead.
 
 ### `open` flags
 

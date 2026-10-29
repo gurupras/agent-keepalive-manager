@@ -87,9 +87,9 @@ On **Windows**, download `agent-keepalive-<version>-setup-x64.exe` (or `arm64`) 
 ## Then
 
 ```sh
-agent-keepalive open
+agent-keepalive
 ```
 
-This starts the server in the background if it is not running and opens the UI in your browser. Pick a session, choose how long to keep it warm, and walk away. [Getting started](/getting-started) explains what happens next and when keeping a cache warm is worth it.
+This starts the server in the background if it is not running and opens the agent-keepalive window (`agent-keepalive open` uses your browser instead). Pick a session, choose how long to keep it warm, and walk away. [Getting started](/getting-started) explains what happens next and when keeping a cache warm is worth it.
 
 </div>

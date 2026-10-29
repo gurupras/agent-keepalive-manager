@@ -25,11 +25,14 @@ Each artifact contains a binary linked with its install kind (`-X …/internal/d
 
 | Kind | Program | Also installs |
 |---|---|---|
-| deb, rpm, arch | `/usr/bin/agent-keepalive` | `/usr/share/applications/agent-keepalive.desktop` (runs `agent-keepalive open`), icon, `/usr/lib/systemd/user/agent-keepalive.service` (not enabled), the repository entry and key (see packaging/README.md) |
-| AppImage | the AppImage itself; running it = `agent-keepalive open` (arguments are passed through) | |
-| windows-setup | `%LOCALAPPDATA%\Programs\agent-keepalive\agent-keepalive.exe` (per-user, no admin) | Start-menu shortcut (`open`), optional "start at login", uninstaller |
-| windows-portable | the single `.exe`; double-click = `open`; data next to it in `agent-keepalive-data\` | |
-| macos-pkg | `/usr/local/bin/agent-keepalive` and `/Applications/agent-keepalive.app` (a launcher that runs `open`) | |
+| deb, rpm, arch | `/usr/bin/agent-keepalive`, the window `/usr/lib/agent-keepalive/agent-keepalive-desktop` | `/usr/share/applications/agent-keepalive.desktop` (runs `agent-keepalive app`), icon, `/usr/lib/systemd/user/agent-keepalive.service` (not enabled), the repository entry and key (see packaging/README.md); WebKitGTK 4.1 recommended (deb, rpm) or required (arch) |
+| AppImage | the AppImage itself, with the window inside; running it = `agent-keepalive app` (arguments are passed through) | |
+| windows-setup | `%LOCALAPPDATA%\Programs\agent-keepalive\agent-keepalive.exe` and `agent-keepalive-desktop.exe` (per-user, no admin) | Start-menu shortcut (`app`), optional "start at login" (`open --no-browser`), uninstaller |
+| windows-portable | the single `.exe`, with the window built in; double-click = `app`; data, and the window written out on first start, next to it in `agent-keepalive-data\` | |
+| macos-pkg | `/usr/local/bin/agent-keepalive` and `/Applications/agent-keepalive.app`, whose executable is the window | |
+| archive, Homebrew | the server and web UI only, no window; `agent-keepalive` = `serve` | |
+
+The window, `agent-keepalive-desktop`, is a Tauri program (`desktop/`) that shows the server's page in the platform's webview (WebKitGTK, WebView2, WKWebView). `agent-keepalive app` starts the server in the background if none is running, then runs the window with `--url` and waits for it; if the window fails at once (no webview runtime), it opens the browser instead. The macOS app is started by Launch Services and runs `agent-keepalive open --no-browser` itself to find the server. A second start shows the open window. The window opens links to other sites in the default browser, and closes itself once the server stops.
 
 `agent-keepalive open` starts the server in the background if none is running (detached, logging to `<data dir>/server.log`), waits for `api/health`, and opens the UI in the default browser. The UI's menu has **Quit**, which calls `POST /api/quit` (token required) and shows a "server stopped" page.
 

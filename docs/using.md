@@ -1,6 +1,6 @@
 # Using the UI
 
-`agent-keepalive open` opens the UI at `http://127.0.0.1:<port>/`. The sidebar lists the views (**All projects**, **Sessions**, **Ledger**, and **Missed savings** when you turn it on in Settings) and every project with a live session. A dot shows each project's state: solid when something in it is kept warm, faded when something is warm, cool when everything is cold. Press <kbd>/</kbd> to filter the projects, and **Pin** a project on its page to keep it at the top. In a narrow window the sidebar folds behind the menu button. Everything updates live.
+`agent-keepalive` opens the UI in its window (`agent-keepalive open` opens it in your browser, at `http://127.0.0.1:<port>/`). The sidebar lists the views (**All projects**, **Sessions**, **Ledger**, and **Missed savings** when you turn it on in Settings) and every project with a live session. A dot shows each project's state: solid when something in it is kept warm, faded when something is warm, cool when everything is cold. Press <kbd>/</kbd> to filter the projects, and **Pin** a project on its page to keep it at the top. In a narrow window the sidebar folds behind the menu button. Everything updates live.
 
 Each view opens with the same strip of numbers: what the ledger booked as saved and wasted in its current range, how many sessions are kept warm and warm, and what re-caching every warm session would cost.
 

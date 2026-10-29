@@ -13,7 +13,7 @@ function reload () {
       <h1 class="mt-3 text-lg font-semibold text-ink">agent-keepalive has stopped</h1>
       <p class="mt-1.5 text-[13px] text-ink-2">
         No sessions are being kept warm. Start it again from your applications menu or with
-        <code class="rounded bg-surface-2 px-1 mono">agent-keepalive open</code>, then reload this page.
+        <code class="rounded bg-surface-2 px-1 mono">agent-keepalive</code>, then reload this page.
       </p>
       <button type="button" class="btn-outline mt-4" @click="reload"><AppIcon name="lucide:refresh-cw" /> Reload</button>
     </div>
