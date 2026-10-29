@@ -2,17 +2,19 @@
 // keeps the provider prompt cache of chosen Claude Code and Codex CLI
 // sessions warm, and serves a web UI to choose them.
 //
-//	agent-keepalive [serve]      run the server in the foreground
-//	agent-keepalive open         start the server in the background if needed and open the UI
+//	agent-keepalive serve        run the server in the foreground
+//	agent-keepalive app          start the server in the background if needed and open the desktop window
+//	agent-keepalive open         start the server in the background if needed and open the UI in a browser
 //	agent-keepalive status       is a server running, and where
 //	agent-keepalive stop         stop the running server
 //	agent-keepalive metrics on|off|status|preview|reset-id
 //	agent-keepalive update check|apply|status
 //	agent-keepalive version
 //
-// With no arguments, installs that are started by double-click or from a
-// desktop menu (Windows setup and portable, AppImage, macOS pkg) run
-// `open`; everything else runs `serve`.
+// With no arguments, the installs that carry the desktop window (the Linux
+// packages, AppImage, Windows setup and portable, macOS pkg) run `app`, or
+// `serve` on a Linux machine with no display; the archives, Homebrew and
+// dev builds run `serve`.
 package main
 
 import (
@@ -54,11 +56,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if cmd == "" {
 		cmd = defaultCommand(app.InstallKind())
+		if cmd == "app" && !hasDisplay() {
+			cmd = "serve"
+		}
 	}
 	var err error
 	switch cmd {
 	case "serve":
 		err = cmdServe(rest, stderr)
+	case "app":
+		err = cmdApp(rest, stdout, stderr)
 	case "open":
 		err = cmdOpen(rest, stdout, stderr)
 	case "status":
@@ -94,11 +101,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 }
 
 // defaultCommand is what running the program without arguments does:
-// installs started from a desktop open the UI.
+// installs that carry the desktop window open it.
 func defaultCommand(kind string) string {
 	switch kind {
-	case update.KindWindowsPortable, update.KindWindowsSetup, update.KindAppImage, update.KindMacOSPkg:
-		return "open"
+	case update.KindDeb, update.KindRPM, update.KindArch, update.KindAppImage,
+		update.KindWindowsPortable, update.KindWindowsSetup, update.KindMacOSPkg:
+		return "app"
 	}
 	return "serve"
 }
@@ -107,8 +115,10 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `Usage: agent-keepalive <command> [flags]
 
 Commands:
-  serve      run the server in the foreground (default)
-  open       start the server in the background if needed and open the UI
+  app        start the server in the background if needed and open the desktop window
+             (the default for the desktop installs)
+  serve      run the server in the foreground (the default otherwise)
+  open       start the server in the background if needed and open the UI in a browser
   status     show whether a server is running
   stop       stop the running server
   metrics    on | off | status | preview | reset-id   (usage reports)

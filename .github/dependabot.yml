@@ -23,3 +23,8 @@ updates:
   - package-ecosystem: docker
     directory: /hub
     schedule: { interval: weekly }
+  - package-ecosystem: cargo
+    directory: /desktop
+    schedule: { interval: weekly }
+    groups:
+      desktop: { patterns: ["*"] }

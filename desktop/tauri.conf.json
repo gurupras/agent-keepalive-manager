@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "agent-keepalive",
+  "identifier": "me.gurupras.agent-keepalive",
+  "app": {
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../packaging/icons/agent-keepalive.png", "../packaging/icons/agent-keepalive.ico"]
+  }
+}

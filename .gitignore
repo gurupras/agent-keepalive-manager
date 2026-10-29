@@ -18,3 +18,6 @@ coverage.out
 # docs site (VitePress)
 /docs/.vitepress/cache/
 /docs/.vitepress/dist/
+
+# the desktop window embedded into the Windows portable exe (scripts/build-go.sh)
+/cmd/agent-keepalive/desktop/

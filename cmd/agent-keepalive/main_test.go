@@ -8,8 +8,9 @@ import (
 
 func TestDefaultCommand(t *testing.T) {
 	for kind, want := range map[string]string{
-		"windows-portable": "open", "windows-setup": "open", "appimage": "open", "macos-pkg": "open",
-		"deb": "serve", "archive": "serve", "dev": "serve", "brew": "serve",
+		"windows-portable": "app", "windows-setup": "app", "appimage": "app", "macos-pkg": "app",
+		"deb": "app", "rpm": "app", "arch": "app",
+		"archive": "serve", "dev": "serve", "brew": "serve",
 	} {
 		if got := defaultCommand(kind); got != want {
 			t.Errorf("%s: %s, want %s", kind, got, want)

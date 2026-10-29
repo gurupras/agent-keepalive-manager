@@ -47,21 +47,32 @@ func cmdOpen(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	r, ok := instance.FindRunning(ctx, dir)
-	if !ok {
-		if r, err = startBackground(ctx, dir, *port); err != nil {
-			return err
-		}
+	return openUI(dir, *port, *noBrowser, stdout, stderr)
+}
+
+// openUI is `open`: the running server's URL, printed and opened in a browser.
+func openUI(dir string, port int, noBrowser bool, stdout, stderr io.Writer) error {
+	r, err := ensureServer(context.Background(), dir, port)
+	if err != nil {
+		return err
 	}
 	fmt.Fprintln(stdout, r.URL)
-	if *noBrowser {
+	if noBrowser {
 		return nil
 	}
 	if err := openBrowser(r.URL); err != nil {
 		fmt.Fprintf(stderr, "could not open a browser (%v); open %s yourself\n", err, r.URL)
 	}
 	return nil
+}
+
+// ensureServer returns the server for the data directory, starting one in
+// the background if none is running.
+func ensureServer(ctx context.Context, dir string, port int) (instance.Running, error) {
+	if r, ok := instance.FindRunning(ctx, dir); ok {
+		return r, nil
+	}
+	return startBackground(ctx, dir, port)
 }
 
 // startBackground starts `serve` detached from this process and its
