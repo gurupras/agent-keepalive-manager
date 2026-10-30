@@ -10,7 +10,7 @@ import PlanStatus from './PlanStatus.vue'
 import PingHistory from './PingHistory.vue'
 import { drawerRow, ui } from '../composables/ui'
 import { loadPings, pingNow, store } from '../api/store'
-import { noReachWhy, planCap } from '../lib/derive'
+import { noReachWhy, planCap, quietText } from '../lib/derive'
 import { clock, hoursLabel, money, parseTime, relative, shortModel, span, tokens } from '../lib/format'
 import { now } from '../composables/now'
 
@@ -30,6 +30,7 @@ const reach = computed(() => {
 const statusText = computed(() => {
   const s = r.value?.s
   if (!s) return ''
+  if (r.value?.quiet) return 'working · ' + quietText(r.value.quiet)
   if (s.harnessStatus === 'shell') return 'idle · background commands running'
   if (s.harnessStatus === 'waiting') return 'waiting for an answer'
   return s.status
@@ -87,6 +88,14 @@ async function ping () {
           <div><dt class="text-ink-2">Started</dt><dd class="text-ink">{{ t(r.s.startedAt) ? clock(t(r.s.startedAt)!, now) : '—' }}</dd></div>
           <div><dt class="text-ink-2">Delivery</dt><dd class="text-ink">{{ reach }}</dd></div>
           <div><dt class="text-ink-2">Process</dt><dd class="mono text-ink">pid {{ r.s.pid }}</dd></div>
+          <div v-if="r.s.experiment" class="col-span-2">
+            <dt class="text-ink-2">Experiment</dt>
+            <dd class="text-ink">
+              <span class="mono">{{ r.s.experiment.id }}</span> ·
+              <template v-if="r.s.experiment.arm === 'ping'">pinged while quiet ({{ r.s.experiment.pings }} so far)</template>
+              <template v-else>not pinged while quiet (control)</template>
+            </dd>
+          </div>
         </dl>
       </section>
 

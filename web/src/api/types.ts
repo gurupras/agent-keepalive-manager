@@ -68,6 +68,8 @@ export interface SessionView {
   statusSince?: string
   /** the harness's own word for the state (Claude Code: idle, busy, shell, waiting) */
   harnessStatus?: string
+  /** working by the harness's word, but the main agent makes no API calls, so its cache cools */
+  quiet?: QuietCause
   reach: Reach
   reachWhy?: string
   contextTokens: number
@@ -79,8 +81,25 @@ export interface SessionView {
   costs: Costs
   cacheExpiresAt: string
   plan?: Plan | null
+  /** the open experiment episode (docs/experiments.md) */
+  experiment?: ExperimentView | null
   savedTotal: number
   wastedTotal: number
+}
+
+/**
+ * Why a working session makes no API calls: background sub-agents, a long
+ * tool call, a prompt waiting for the user, or something else.
+ */
+export type QuietCause = 'subagents' | 'tool' | 'waiting' | 'other'
+
+export interface ExperimentView {
+  id: string
+  arm: 'hold' | 'ping'
+  cause: QuietCause
+  since: string
+  /** treatment pings sent in the episode so far */
+  pings: number
 }
 
 export type PingState = 'sending' | 'delivered' | 'seen' | 'verified' | 'failed' | 'withdrawn' | 'lost'
@@ -96,6 +115,8 @@ export interface PingRecord {
   cost: number
   /** the reply re-wrote the context: the cache had already expired */
   cold: boolean
+  /** sent by an experiment's treatment */
+  experiment?: boolean
   error?: string
 }
 
@@ -201,6 +222,10 @@ export interface MetricsStatus {
   lastSent?: string
   lastError?: string
   queued: number
+  /** takes part in experiments; they run only while reports are on */
+  experiments: boolean
+  experimentsLocked: boolean
+  experimentsLockedBy?: 'admin' | 'profile' | string
 }
 
 export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'installing' | 'error'

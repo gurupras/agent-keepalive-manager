@@ -433,6 +433,16 @@ export async function setMetricsEnabled (enabled: boolean): Promise<boolean> {
   return true
 }
 
+export async function setExperiments (experiments: boolean): Promise<boolean> {
+  const r = await act('Could not change experiments', () => transport.request<MetricsStatus>('PUT', 'metrics', { experiments }))
+  if (!r) return false
+  state.metrics = r
+  toast('success', experiments ? 'Experiments turned on' : 'Experiments turned off', {
+    body: experiments ? undefined : 'No experiment pings are sent, and no experiment results are reported.',
+  })
+  return true
+}
+
 export async function resetInstallId (): Promise<boolean> {
   const r = await act('Could not reset the install id', () => transport.request<MetricsStatus>('POST', 'metrics/reset-id'))
   if (!r) return false

@@ -17,6 +17,7 @@ const list = computed(() => props.pings ?? [])
       <li v-for="p in list" :key="p.id" class="px-3 py-2">
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
           <PingStateBadge :state="p.state" :cold="p.cold" />
+          <span v-if="p.experiment" class="rounded bg-surface-2 px-1.5 text-[11px] text-ink-2" title="Sent by an experiment while the session was working but quiet (docs/experiments.md)">experiment</span>
           <time class="text-xs text-ink-2 tabular-nums" :datetime="p.sentAt" :title="dateTime(parseTime(p.sentAt) ?? 0)">{{ relative(parseTime(p.sentAt) ?? 0, now) }}</time>
           <span class="ml-auto text-xs text-ink tabular-nums">{{ p.cost ? money(p.cost) : '' }}</span>
         </div>

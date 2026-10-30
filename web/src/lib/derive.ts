@@ -1,4 +1,4 @@
-import type { LedgerEntry, Plan, SessionView, Settings, Totals } from '../api/types'
+import type { LedgerEntry, Plan, QuietCause, SessionView, Settings, Totals } from '../api/types'
 import { baseName, hoursLabel, parseTime } from './format'
 
 export const HOUR_PRESETS = [1, 2, 4, 8, 12, 24] as const
@@ -14,6 +14,8 @@ export interface Row {
   /** folder relative to the project root, "." for the root itself */
   where: string
   working: boolean
+  /** working only in the harness's word: the main agent makes no calls and its cache cools */
+  quiet?: QuietCause
   /** reported working for longer than any turn takes */
   stale: boolean
   /** an active or paused plan (finished plans are not shown on the row) */
@@ -57,13 +59,15 @@ export function toRow (s: SessionView, now: number): Row {
   const human = parseTime(s.lastHuman)
   const next = plan?.state === 'active' ? parseTime(plan.nextPing) : undefined
   const until = plan && !plan.indefinite ? parseTime(plan.until) : undefined
-  const leftMs = working ? ttlMs : exp === undefined ? -1 : exp - now
+  const quiet = working ? s.quiet : undefined
+  const leftMs = working && !quiet ? ttlMs : exp === undefined ? -1 : exp - now
   return {
     s,
     key: s.key,
     title: sessionTitle(s),
     where: relativeWhere(s.cwd, s.project),
     working,
+    quiet,
     stale: working && since !== undefined && now - since > STALE_MS,
     plan,
     kept: plan?.state === 'active',
@@ -242,4 +246,14 @@ export function compareVersions (a: string, b: string): number {
     if (x !== y) return x - y
   }
   return 0
+}
+
+/** What a quiet session's main agent waits on. */
+export function quietText (c: QuietCause): string {
+  switch (c) {
+    case 'subagents': return 'waiting on background sub-agents'
+    case 'tool': return 'waiting on a long tool call'
+    case 'waiting': return 'waiting for your answer'
+    default: return 'busy, but not calling the model'
+  }
 }

@@ -2,7 +2,7 @@
 import { computed, ref, useId } from 'vue'
 import AppIcon from './AppIcon.vue'
 import CopyButton from './CopyButton.vue'
-import { previewMetrics, resetInstallId, setMetricsEnabled, store } from '../api/store'
+import { previewMetrics, resetInstallId, setExperiments, setMetricsEnabled, store } from '../api/store'
 import { errorText } from '../composables/toasts'
 import { dateTime, parseTime } from '../lib/format'
 
@@ -42,6 +42,19 @@ async function toggle (e: Event) {
   busy.value = false
   if (!ok) (e.target as HTMLInputElement).checked = m.value.enabled
   if (!on) preview.value = undefined
+}
+
+const expBusy = ref(false)
+const expLockedText = computed(() => m.value.experimentsLockedBy === 'admin'
+  ? 'Locked by your administrator'
+  : m.value.experimentsLockedBy === 'profile' ? 'Locked by this build\'s distribution profile' : 'Locked')
+
+async function toggleExperiments (e: Event) {
+  const on = (e.target as HTMLInputElement).checked
+  expBusy.value = true
+  const ok = await setExperiments(on)
+  expBusy.value = false
+  if (!ok) (e.target as HTMLInputElement).checked = m.value.experiments
 }
 
 async function loadPreview () {
@@ -85,6 +98,26 @@ const lastSent = computed(() => {
           <AppIcon name="lucide:lock" /> {{ lockedText }}
         </span>
         <span v-else-if="!m.enabled" class="block text-xs text-ink-2">Off: nothing is sent and nothing is queued.</span>
+      </span>
+    </label>
+
+    <label class="mt-2.5 flex items-start gap-2.5" :class="m.experimentsLocked ? 'cursor-not-allowed' : 'cursor-pointer'">
+      <input
+        type="checkbox" class="mt-0.5 size-4 accent-[var(--ka-accent)]" :checked="m.experiments" :disabled="m.experimentsLocked || expBusy"
+        :aria-describedby="id + '-e'" @change="toggleExperiments"
+      />
+      <span>
+        <span class="text-[13px] font-medium text-ink">Take part in experiments</span>
+        <span :id="id + '-e'" class="block text-xs text-ink-2">
+          Helps decide what future versions do. While a session with a keepalive plan is busy but its main agent makes no calls
+          (it waits on sub-agents, a long tool or your answer), some of those stretches are pinged and some are not, and the
+          summed costs go into the usage report. Treatment pings are capped at 20 and $1 a day, never exceed the break-even of
+          a stretch, and stop on their own if they cost more than they save.
+          <template v-if="m.experiments && !m.enabled"> Nothing runs while usage reports are off.</template>
+        </span>
+        <span v-if="m.experimentsLocked" class="mt-0.5 flex items-center gap-1 text-xs text-ink-2">
+          <AppIcon name="lucide:lock" /> {{ expLockedText }}
+        </span>
       </span>
     </label>
 
@@ -141,6 +174,7 @@ const lastSent = computed(() => {
         <li><strong class="text-ink">plans</strong>: plans started, how many were indefinite, hours requested.</li>
         <li><strong class="text-ink">pings</strong>: pings sent, verified, cold, failed, and their cost.</li>
         <li><strong class="text-ink">outcomes</strong>: ledger results summed per harness, model, outcome and reason: counts, ping cost, avoided cost, net, context tokens, idle minutes.</li>
+        <li><strong class="text-ink">experiments</strong>: when taking part, experiment episodes summed per experiment, arm, harness and model: counts, pings, costs, context tokens, quiet minutes.</li>
       </ul>
       <p><strong class="text-ink">Never sent:</strong> names, user names, e-mail, host names, paths, project names, session titles or ids, prompts, transcript content, model answers, or other settings. The hub does not store the sender's IP address.</p>
       <p>Turning reports off takes effect at once and deletes anything queued. It can also be turned off with <code class="rounded bg-surface-2 px-1 mono">agent-keepalive metrics off</code> or <code class="rounded bg-surface-2 px-1 mono">AGENT_KEEPALIVE_METRICS=off</code>.</p>

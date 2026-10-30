@@ -136,7 +136,7 @@ export class MockBackend {
 
   private initialMetrics (): MetricsStatus {
     const m = this.opts.metrics
-    if (m === 'none') return { available: false, enabled: false, locked: false, queued: 0 }
+    if (m === 'none') return { available: false, enabled: false, locked: false, queued: 0, experiments: false, experimentsLocked: false }
     const locked = m === 'admin' || m === 'profile'
     return {
       available: true,
@@ -147,6 +147,9 @@ export class MockBackend {
       installId: '8d3c6f0e-2b7a-4f5e-9c1d-3a4b5c6d7e8f',
       lastSent: m === 'off' ? undefined : iso(Date.UTC(2026, 9, 27, 0, 4)),
       queued: m === 'off' ? 0 : 1,
+      experiments: true,
+      experimentsLocked: locked,
+      experimentsLockedBy: locked ? m : undefined,
     }
   }
 
@@ -358,7 +361,7 @@ export class MockBackend {
       byOutcome.set(k, o)
     }
     return {
-      schema: 1,
+      schema: 2,
       installId: this.metrics.installId,
       day,
       version: this.info.version,
@@ -370,6 +373,12 @@ export class MockBackend {
       plans: { started: 3, indefinite: 1, hours: 21.5 },
       pings: { sent: 17, verified: 16, cold: 1, failed: 0, costUsd: 0.84 },
       outcomes: [...byOutcome.values()],
+      experiments: this.metrics.experiments
+        ? [
+            { experiment: 'busy-ping-subagents-1', arm: 'hold', harness: 'claude', model: 'claude-opus-5-5', episodes: 2, returned: 2, warm: 1, pings: 0, pingCalls: 0, pingCostUsd: 0, rewriteUsd: 1.6, costUsd: 1.6, costSqUsd: 2.56, contextTokens: 400000, quietMinutes: 130 },
+            { experiment: 'busy-ping-subagents-1', arm: 'ping', harness: 'claude', model: 'claude-opus-5-5', episodes: 1, returned: 1, warm: 1, pings: 1, pingCalls: 1, pingCostUsd: 0.04, rewriteUsd: 0.01, costUsd: 0.05, costSqUsd: 0.0025, contextTokens: 200000, quietMinutes: 70 },
+          ]
+        : [],
     }
   }
 
@@ -495,9 +504,16 @@ export class MockBackend {
       }
       case 'GET metrics': return this.metrics
       case 'PUT metrics': {
-        if (this.metrics.locked) throw new ApiError(`Usage reports are locked by the ${this.metrics.lockedBy === 'admin' ? 'administrator' : 'distribution profile'}.`, 403)
-        const on = !!(body as { enabled?: boolean }).enabled
-        this.metrics = { ...this.metrics, enabled: on, queued: on ? this.metrics.queued : 0 }
+        const b = body as { enabled?: boolean, experiments?: boolean }
+        if (b.experiments !== undefined) {
+          if (this.metrics.experimentsLocked) throw new ApiError('Experiments are locked.', 403)
+          this.metrics = { ...this.metrics, experiments: b.experiments }
+        }
+        if (b.enabled !== undefined) {
+          if (this.metrics.locked) throw new ApiError(`Usage reports are locked by the ${this.metrics.lockedBy === 'admin' ? 'administrator' : 'distribution profile'}.`, 403)
+          const on = b.enabled
+          this.metrics = { ...this.metrics, enabled: on, queued: on ? this.metrics.queued : 0 }
+        }
         this.emitLater({ type: 'metrics', data: this.metrics }, 50)
         return this.metrics
       }
