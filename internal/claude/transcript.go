@@ -51,8 +51,13 @@ type summary struct {
 	// awaySummary is Claude Code's latest recap of the session, written
 	// for a user coming back to it.
 	awaySummary string
-	toolPending bool          // the latest call stopped for tool_use and no turn_duration followed
-	ttl         time.Duration // tier of the most recent cache write (0 = none seen)
+	toolPending bool // the latest call stopped for tool_use and no turn_duration followed
+	// lastRequest is when the main agent last sent an API request (its
+	// api-request record, written by Claude Code 2.1.300 and later);
+	// lastResponse when it last recorded a response, errors included.
+	lastRequest  time.Time
+	lastResponse time.Time
+	ttl          time.Duration // tier of the most recent cache write (0 = none seen)
 }
 
 // newTranscript returns the state for path, adding to log (which a caller
@@ -82,6 +87,28 @@ func (t *transcript) poll() (loading bool, err error) {
 	t.pub = t.cur
 	t.mu.Unlock()
 	return false, err
+}
+
+// requestTimeout bounds how long a request without a response is believed
+// to be in flight; a crash can leave one unanswered.
+const requestTimeout = 30 * time.Minute
+
+// calling reports whether a request of the main agent is in flight. It is
+// only known when the transcript has api-request records (see tracksRequests).
+func (p summary) calling(now time.Time) bool {
+	return p.lastRequest.After(p.lastResponse) && now.Sub(p.lastRequest) < requestTimeout
+}
+
+// tracksRequests reports whether the transcript records the main agent's
+// API requests, which telling a quiet session from a working one needs.
+func (p summary) tracksRequests() bool { return !p.lastRequest.IsZero() }
+
+// quietSince is when the main agent last sent or received an API call.
+func (p summary) quietSince() time.Time {
+	if p.lastRequest.After(p.lastResponse) {
+		return p.lastRequest
+	}
+	return p.lastResponse
 }
 
 func (t *transcript) published() summary {
@@ -120,6 +147,7 @@ var (
 	patAITitle    = []byte(`"type":"ai-title"`)
 	patSidechain  = []byte(`"isSidechain":true`)
 	patTurnDur    = []byte(`"subtype":"turn_duration"`)
+	patRequest    = []byte(`"type":"api-request"`)
 	patCompact    = []byte(`"subtype":"compact_boundary"`)
 	patAway       = []byte(`"subtype":"away_summary"`)
 )
@@ -190,7 +218,8 @@ func (t *transcript) Line(line []byte) {
 		bytes.Contains(line, patUser),
 		bytes.Contains(line, patAttachment),
 		bytes.Contains(line, patCustom),
-		bytes.Contains(line, patAITitle):
+		bytes.Contains(line, patAITitle),
+		bytes.Contains(line, patRequest):
 	case bytes.Contains(line, patSystem):
 		if !bytes.Contains(line, patTurnDur) && !bytes.Contains(line, patCompact) && !bytes.Contains(line, patAway) {
 			return
@@ -227,6 +256,10 @@ func (t *transcript) Line(line []byte) {
 		t.onUser(&r, at)
 	case "attachment":
 		t.noteTrigger(at)
+	case "api-request":
+		if at.After(t.cur.lastRequest) {
+			t.cur.lastRequest = at
+		}
 	case "system":
 		switch r.Subtype {
 		case "turn_duration":
@@ -270,6 +303,9 @@ func (t *transcript) noteTrigger(at time.Time) {
 
 func (t *transcript) onAssistant(r *rawRecord, at time.Time) {
 	m := r.Message
+	if m != nil && at.After(t.cur.lastResponse) {
+		t.cur.lastResponse = at
+	}
 	if m == nil || m.Model == "<synthetic>" || m.Usage == nil {
 		return
 	}

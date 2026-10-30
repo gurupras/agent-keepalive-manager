@@ -108,6 +108,31 @@ CREATE TABLE sightings (
 	PRIMARY KEY (day, key)
 );
 `},
+	{2, `
+CREATE TABLE episodes (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	experiment   TEXT    NOT NULL,
+	arm          TEXT    NOT NULL,
+	cause        TEXT    NOT NULL,
+	plan_id      INTEGER NOT NULL,
+	key          TEXT    NOT NULL,
+	harness      TEXT    NOT NULL DEFAULT '',
+	model        TEXT    NOT NULL DEFAULT '',
+	quiet_from   INTEGER NOT NULL,
+	started_at   INTEGER NOT NULL,
+	context_size INTEGER NOT NULL DEFAULT 0,
+	recache      REAL    NOT NULL DEFAULT 0,
+	ended_at     INTEGER NOT NULL DEFAULT 0,
+	ended_by     TEXT    NOT NULL DEFAULT '',
+	warm         INTEGER NOT NULL DEFAULT 0,
+	rewrite      REAL    NOT NULL DEFAULT 0,
+	UNIQUE (plan_id, quiet_from, experiment)
+);
+CREATE INDEX episodes_ended ON episodes(ended_at);
+
+ALTER TABLE pings ADD COLUMN episode_id INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX pings_episode ON pings(episode_id);
+`},
 }
 
 // SchemaVersion returns the highest applied migration.

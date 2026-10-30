@@ -119,6 +119,42 @@ func cmdMetrics(args []string, stdout io.Writer) error {
 	return nil
 }
 
+// cmdExperiments turns taking part in experiments on or off
+// (docs/experiments.md).
+func cmdExperiments(args []string, stdout io.Writer) error {
+	fs := newFlags("experiments")
+	dataDir := dataDirFlag(fs)
+	sub, err := parseSub(fs, args, "status")
+	if err != nil {
+		return err
+	}
+	dir, err := dataDir()
+	if err != nil {
+		return err
+	}
+	m, done, err := metricsFor(dir)
+	if err != nil {
+		return err
+	}
+	defer done()
+	switch sub {
+	case "status":
+	case "on", "off":
+		if err := m.SetExperiments(sub == "on"); err != nil {
+			if errors.Is(err, apitypes.ErrLocked) {
+				st := m.Status()
+				return fmt.Errorf("experiments are locked by the %s configuration", orDefault(st.ExperimentsLockedBy, "admin"))
+			}
+			return err
+		}
+	default:
+		fmt.Fprintf(stdout, "experiments: unknown subcommand %q (on, off, status)\n", sub)
+		return errUsage
+	}
+	printMetrics(stdout, m.Status())
+	return nil
+}
+
 func printMetrics(w io.Writer, st apitypes.MetricsStatus) {
 	if !st.Available {
 		fmt.Fprintln(w, "usage reports: not available in this build (no hub configured)")
@@ -131,8 +167,18 @@ func printMetrics(w io.Writer, st apitypes.MetricsStatus) {
 	if st.Locked {
 		state += " (locked by " + orDefault(st.LockedBy, "admin") + ")"
 	}
-	printf(w, "usage reports: %s\nhub: %s\ninstall id: %s\nlast sent: %s\nqueued: %d\n",
-		state, st.Endpoint, st.InstallID, fmtTime(st.LastSent), st.Queued)
+	exp := "off"
+	switch {
+	case st.Experiments && st.Enabled:
+		exp = "on"
+	case st.Experiments:
+		exp = "on, but idle while usage reports are off"
+	}
+	if st.ExperimentsLocked {
+		exp += " (locked by " + orDefault(st.ExperimentsLockedBy, "admin") + ")"
+	}
+	printf(w, "usage reports: %s\nexperiments: %s\nhub: %s\ninstall id: %s\nlast sent: %s\nqueued: %d\n",
+		state, exp, st.Endpoint, st.InstallID, fmtTime(st.LastSent), st.Queued)
 	if st.LastError != "" {
 		printf(w, "last error: %s\n", st.LastError)
 	}

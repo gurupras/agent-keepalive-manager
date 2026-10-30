@@ -360,22 +360,31 @@ func (h *handler) metricsNow() apitypes.MetricsStatus {
 
 func (h *handler) setMetrics(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Enabled *bool `json:"enabled"`
+		Enabled     *bool `json:"enabled"`
+		Experiments *bool `json:"experiments"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Enabled == nil {
-		writeError(w, http.StatusBadRequest, "give enabled")
+	if body.Enabled == nil && body.Experiments == nil {
+		writeError(w, http.StatusBadRequest, "give enabled or experiments")
 		return
 	}
 	if h.opts.Metrics == nil {
 		h.fail(w, r, apitypes.ErrUnavailable)
 		return
 	}
-	if err := h.opts.Metrics.SetEnabled(*body.Enabled); err != nil {
-		h.fail(w, r, err)
-		return
+	if body.Enabled != nil {
+		if err := h.opts.Metrics.SetEnabled(*body.Enabled); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+	}
+	if body.Experiments != nil {
+		if err := h.opts.Metrics.SetExperiments(*body.Experiments); err != nil {
+			h.fail(w, r, err)
+			return
+		}
 	}
 	st := h.opts.Metrics.Status()
 	if _, ok := h.opts.Metrics.(apitypes.MetricsNotifier); !ok {

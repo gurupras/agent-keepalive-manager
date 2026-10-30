@@ -33,6 +33,13 @@ type planRun struct {
 	// replayUntil: after a restart, activity at or before this time was
 	// already applied.
 	replayUntil time.Time
+	// ep is the open experiment episode; epDone the QuietFrom of the last
+	// one closed, so a stretch opens one episode at most.
+	ep     *episodeRun
+	epDone time.Time
+	// treat: the ping arm pings the working session as if it were idle;
+	// pings sent while it is set belong to the episode.
+	treat bool
 }
 
 // pendingReturn is a segment whose idle gap ended with real activity at
@@ -108,6 +115,7 @@ func (s *Service) realActivity(ctx context.Context, pr *planRun, a model.Activit
 	if a.Kind != model.ActAssistant || a.Usage == nil {
 		return
 	}
+	s.returnEpisode(ctx, pr, a)
 	if pr.pending != nil {
 		s.resolveReturn(ctx, pr, a)
 	}
@@ -189,6 +197,10 @@ func (s *Service) advance(ctx context.Context, now time.Time, pr *planRun, jump 
 	refresh := sess.LastCall
 	stale := s.staleness(pr, sess, now)
 	working := sess.Status == model.StatusWorking && stale == ""
+	pr.treat = s.experimentStep(ctx, now, pr, sess, working, ttl)
+	if pr.treat {
+		working = false // the main agent makes no calls; ping as if idle
+	}
 	waiting := s.unconsumed(key) != nil // a ping may still refresh the cache
 	expires := refresh.Add(ttl)
 	// Evaluated from the transcript every tick, so a clock jump (rule 10)
@@ -320,6 +332,7 @@ func (s *Service) whenGone(ctx context.Context, now time.Time, pr *planRun) {
 // Requires s.mu.
 func (s *Service) endPlan(ctx context.Context, at time.Time, pr *planRun, state model.PlanState, endedBy, reason string) {
 	pr.State, pr.EndedAt, pr.NextPing, pr.Blocked = state, at, time.Time{}, ""
+	s.closeEpisode(ctx, pr, at, model.EpisodeEnded, false, 0)
 	if reason != "" {
 		pr.Reason = reason
 	}

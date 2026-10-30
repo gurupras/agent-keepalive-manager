@@ -343,19 +343,23 @@ type Ping struct {
 	// SegFrom is the IdleFrom of the segment the ping was sent in; zero for
 	// a ping outside any plan.
 	SegFrom time.Time
+	// EpisodeID is the experiment episode whose treatment sent the ping;
+	// zero for every other ping.
+	EpisodeID int64
 }
 
-const pingCols = `id, plan_id, key, sent_at, state, calls, usage, cost, cold, error, seg_from`
+const pingCols = `id, plan_id, key, sent_at, state, calls, usage, cost, cold, error, seg_from, episode_id`
 
 func scanPing(sc scanner) (Ping, error) {
 	var p Ping
 	var sent, seg int64
 	var cold int
 	var usage string
-	if err := sc.Scan(&p.ID, &p.PlanID, &p.Key, &sent, &p.State, &p.Calls, &usage, &p.Cost, &cold, &p.Error, &seg); err != nil {
+	if err := sc.Scan(&p.ID, &p.PlanID, &p.Key, &sent, &p.State, &p.Calls, &usage, &p.Cost, &cold, &p.Error, &seg,
+		&p.EpisodeID); err != nil {
 		return p, err
 	}
-	p.SentAt, p.SegFrom, p.Cold = fromMS(sent), fromMS(seg), cold != 0
+	p.SentAt, p.SegFrom, p.Cold, p.Experiment = fromMS(sent), fromMS(seg), cold != 0, p.EpisodeID != 0
 	if err := json.Unmarshal([]byte(usage), &p.Usage); err != nil {
 		return p, fmt.Errorf("ping %s usage: %w", p.ID, err)
 	}
@@ -372,8 +376,9 @@ func (s *Store) InsertPing(ctx context.Context, p Ping, seg *Segment) error {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO pings (`+pingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-			p.ID, p.PlanID, p.Key, ms(p.SentAt), p.State, p.Calls, string(u), p.Cost, b2i(p.Cold), p.Error, ms(p.SegFrom))
+		_, err := tx.ExecContext(ctx, `INSERT INTO pings (`+pingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			p.ID, p.PlanID, p.Key, ms(p.SentAt), p.State, p.Calls, string(u), p.Cost, b2i(p.Cold), p.Error, ms(p.SegFrom),
+			p.EpisodeID)
 		return err
 	})
 }
@@ -395,8 +400,9 @@ func (s *Store) UpdatePing(ctx context.Context, p Ping) ([]model.LedgerEntry, er
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE pings SET plan_id=?, key=?, sent_at=?, state=?, calls=?, usage=?,
-			cost=?, cold=?, error=?, seg_from=? WHERE id=?`,
-			p.PlanID, p.Key, ms(p.SentAt), p.State, p.Calls, string(u), p.Cost, b2i(p.Cold), p.Error, ms(p.SegFrom), p.ID); err != nil {
+			cost=?, cold=?, error=?, seg_from=?, episode_id=? WHERE id=?`,
+			p.PlanID, p.Key, ms(p.SentAt), p.State, p.Calls, string(u), p.Cost, b2i(p.Cold), p.Error, ms(p.SegFrom),
+			p.EpisodeID, p.ID); err != nil {
 			return err
 		}
 		delta := p.Cost - old
@@ -643,7 +649,8 @@ func (s *Store) DayStats(ctx context.Context, day time.Time) (model.DayStats, er
 	d := day.UTC()
 	start := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 	lo, hi := start.UnixMilli(), start.AddDate(0, 0, 1).UnixMilli()
-	out := model.DayStats{Day: start.Format(time.DateOnly), Sessions: map[model.Harness]int{}, Outcomes: []model.OutcomeSum{}}
+	out := model.DayStats{Day: start.Format(time.DateOnly), Sessions: map[model.Harness]int{}, Outcomes: []model.OutcomeSum{},
+		Experiments: []model.ExperimentSum{}}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT harness, COUNT(*) FROM sightings WHERE day=? GROUP BY harness`, out.Day)
 	if err != nil {
@@ -692,5 +699,9 @@ func (s *Store) DayStats(ctx context.Context, day time.Time) (model.DayStats, er
 		}
 		out.Outcomes = append(out.Outcomes, o)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	out.Experiments, err = s.experimentDay(ctx, lo, hi)
+	return out, err
 }

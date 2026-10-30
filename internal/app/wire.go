@@ -60,11 +60,12 @@ func buildCore(ctx context.Context, d CoreDeps) (*Core, error) {
 	xdel := codex.NewDeliverer(xopts, xsrc)
 
 	svc, err := scheduler.New(scheduler.Config{
-		Store:      st,
-		Sources:    []model.Source{csrc, xsrc},
-		Deliverers: []model.Deliverer{cdel, xdel},
-		Pricing:    table,
-		Log:        log.With("component", "scheduler"),
+		Store:       st,
+		Sources:     []model.Source{csrc, xsrc},
+		Deliverers:  []model.Deliverer{cdel, xdel},
+		Pricing:     table,
+		Log:         log.With("component", "scheduler"),
+		Experiments: MetricsSettings{Config: d.Config}.Enrolled,
 	})
 	if err != nil {
 		cdel.Close()

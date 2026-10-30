@@ -13,7 +13,7 @@ Both Go programs are pure Go (`CGO_ENABLED=0`) and embed their Vue UI, so each i
 ## Repository layout
 
 ```
-cmd/agent-keepalive/         the local server + CLI (serve, app, open, mcp, status, stop, update, metrics, version)
+cmd/agent-keepalive/         the local server + CLI (serve, app, open, mcp, status, stop, update, metrics, experiments, version)
 cmd/agent-keepalive-hub/     the hub
 internal/
   model/                     shared types: Session, Activity, Plan, PingRecord, LedgerEntry, Settings, Event
@@ -21,7 +21,7 @@ internal/
   claude/                    Claude Code discovery (session registry, transcripts) and delivery (messaging socket)
   codex/                     Codex CLI discovery (processes, rollouts) and delivery (`codex queue`)
   pricing/                   list-price table + pricing.json override, break-even math
-  store/                     SQLite (modernc.org/sqlite): plans, pings, ledger, settings, kv
+  store/                     SQLite (modernc.org/sqlite): plans, pings, ledger, experiment episodes, settings, kv
   scheduler/                 the core: scan loop, plans, pings, verification, ledger segments, missed what-if
   api/                       HTTP API + WebSocket events + SPA serving + loopback guard
   app/                       wiring: Serve(ctx, Config) used by the CLI
@@ -30,6 +30,7 @@ internal/
   distro/                    the link-time distribution profile (URLs, metrics default)
   config/                    runtime config: user file, admin file (locks), env overrides
   telemetry/                 install id, report building, batching, sending to the hub
+  experiment/                the A/B experiments this release runs, arm assignment, spend guards
   update/                    signed feed, install-kind detection, download/verify/swap/restart
   hub/                       the hub: ingest, storage, aggregation queries, dashboard API
 web/                         the local UI (Vue 3, Vite, Tailwind 4, TypeScript), embedded by web/embed.go
@@ -53,7 +54,7 @@ Read-only discovery, never keystrokes:
 | Usage | `message.usage` per API call, deduplicated by message id | `token_count` per API call |
 | Delivery | one JSON line to the session's messaging socket (`messagingSocketPath`) | `codex queue --thread <id> --message <text>` with the session's own binary |
 
-Every ping carries a `[keepalive id=…]` marker, so scanners tell pings from real prompts. A plan pings at `TTL − margin` after the last API call of any kind, never while the session is working, and verifies each ping against the transcript (a reply that re-wrote the whole context is `cold`).
+Every ping carries a `[keepalive id=…]` marker, so scanners tell pings from real prompts. A plan pings at `TTL − margin` after the last API call of any kind, never while the session is working (except in the ping arm of an [experiment](experiments.md) on a quiet session), and verifies each ping against the transcript (a reply that re-wrote the whole context is `cold`).
 
 Ledger semantics: an idle segment starts at the last real activity and ends when the user returns (saved = context × (write − read) − ping cost, only if the gap exceeded the TTL), when the plan ends or the session exits (wasted = ping cost), or when a ping finds the cache cold.
 
@@ -96,6 +97,8 @@ Runtime overrides, strongest first: the admin file (`/etc/agent-keepalive/config
 ## Usage metrics
 
 On by default (opt-out), per the profile. Reports are pseudonymous: a random install id (UUID v4, generated locally, stored in the data dir, reset with `agent-keepalive metrics reset-id`) is the only identifier. Never sent: names, paths, project names, titles, session ids, prompts, host names. See `docs/metrics.md` for the exact fields. Turning reporting off stops it immediately and drops anything queued.
+
+Experiments ([experiments.md](experiments.md)) ride on the reports: an install that reports takes part unless `experiments.enabled` is off, and its episodes are summed into the report's `experiments`.
 
 ## Updates
 

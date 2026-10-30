@@ -107,6 +107,7 @@ type Source struct {
 
 type tracked struct {
 	t           *transcript       // nil until the transcript file exists
+	subs        *subagents        // its sub-agents' transcripts; set with t
 	log         *tail.ActivityLog // outlives t, so Seq keeps counting if the file is relocated
 	lastSeen    time.Time
 	lookedAt    time.Time // last glob for the transcript
@@ -205,7 +206,7 @@ func (s *Source) track(id, cwd string, now time.Time) *tracked {
 				t.Reset()
 			}
 			s.mu.Lock()
-			tr.t = t
+			tr.t, tr.subs = t, newSubagents(p)
 			s.mu.Unlock()
 		}
 	}
@@ -329,7 +330,41 @@ func (s *Source) session(e regEntry, procStart string, tr *tracked, loading bool
 		since = at
 	}
 	ss.Status, ss.StatusSince, ss.HarnessStatus = status, since, e.Status
+	if t != nil && !loading {
+		ss.Quiet = s.quiet(e, tr, p, now)
+	}
 	return ss
+}
+
+// quietGrace is how long the main agent must have been without API activity
+// before a working session counts as quiet, so that the moment between a
+// tool result and the request it feeds is not taken for it.
+const quietGrace = time.Minute
+
+// quiet says why a session the registry reports as working makes no API
+// calls of its own (model.QuietCause). Telling needs the transcript's
+// api-request records; transcripts without them (Claude Code before
+// 2.1.300) get "".
+func (s *Source) quiet(e regEntry, tr *tracked, p summary, now time.Time) model.QuietCause {
+	if statusOf(e.Status) != model.StatusWorking || !p.tracksRequests() || p.calling(now) ||
+		now.Sub(p.quietSince()) < quietGrace {
+		return ""
+	}
+	switch {
+	case e.Status == "waiting":
+		return model.QuietWaiting
+	case e.Status != "busy":
+		return "" // compacting and other states of the CLI's own
+	case p.toolPending:
+		return model.QuietTool
+	}
+	s.mu.Lock()
+	subs := tr.subs
+	s.mu.Unlock()
+	if subs != nil && subs.running(msTime(e.StartedAt)) {
+		return model.QuietSubagents
+	}
+	return model.QuietOther
 }
 
 // reachOf says whether a messaging socket path can be used.

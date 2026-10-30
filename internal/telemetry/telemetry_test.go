@@ -28,6 +28,8 @@ type fakeSettings struct {
 	url       string
 	token     string
 	setCalled int
+	expOff    bool // experiments are on unless set
+	expLocked bool
 }
 
 func (s *fakeSettings) Enabled() (bool, bool, string) {
@@ -45,6 +47,20 @@ func (s *fakeSettings) SetEnabled(on bool) error {
 	}
 	s.on = on
 	s.setCalled++
+	return nil
+}
+func (s *fakeSettings) Experiments() (bool, bool, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.expOff, s.expLocked, s.by
+}
+func (s *fakeSettings) SetExperiments(on bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.expLocked {
+		return apitypes.ErrLocked
+	}
+	s.expOff = !on
 	return nil
 }
 
@@ -165,12 +181,22 @@ func TestReportSchema(t *testing.T) {
 			{Harness: model.Claude, Model: "claude-opus-4-1", Outcome: model.OutcomeSaved, EndedBy: model.EndReturned,
 				Count: 1, Pings: 4, PingCostUSD: 0.2, AvoidedUSD: 3.9, NetUSD: 3.7, ContextTokens: 160000, IdleMinutes: 210},
 		},
+		Experiments: []model.ExperimentSum{
+			{Experiment: "busy-ping-subagents-1", Arm: model.ArmPing, Harness: model.Claude, Model: "claude-opus-4-1",
+				Episodes: 2, Returned: 2, Warm: 2, Pings: 3, PingCalls: 3, PingCostUSD: 0.3, RewriteUSD: 0.1,
+				CostUSD: 0.4, CostSqUSD: 0.08, ContextTokens: 300000, QuietMinutes: 90},
+			{Experiment: "busy-ping-subagents-1", Arm: model.ArmHold, Harness: model.Claude, Model: "claude opus",
+				Episodes: 1, Returned: 1, RewriteUSD: 2.25, CostUSD: 2.25, CostSqUSD: 5.0625, ContextTokens: 150000,
+				QuietMinutes: 40},
+		},
 	}
 	r := BuildReport("8d3c6f0e-2b7a-4f5e-9c1d-3a4b5c6d7e8f", Build{"1.4.0", "linux", "amd64", "public", "deb"}, ds)
 	b, _ := json.Marshal(r)
-	want := `{"schema":1,"installId":"8d3c6f0e-2b7a-4f5e-9c1d-3a4b5c6d7e8f","day":"2026-10-26","version":"1.4.0","os":"linux","arch":"amd64","profile":"public","installKind":"deb",` +
+	want := `{"schema":2,"installId":"8d3c6f0e-2b7a-4f5e-9c1d-3a4b5c6d7e8f","day":"2026-10-26","version":"1.4.0","os":"linux","arch":"amd64","profile":"public","installKind":"deb",` +
 		`"sessions":{"claude":4,"codex":1},"plans":{"started":3,"indefinite":1,"hours":21.5},"pings":{"sent":17,"verified":16,"cold":1,"failed":0,"costUsd":0.84},` +
-		`"outcomes":[{"harness":"claude","model":"claude-opus-4-1","outcome":"saved","endedBy":"returned","count":2,"pings":9,"pingCostUsd":0.41,"avoidedUsd":7.8,"netUsd":7.39,"contextTokens":310000,"idleMinutes":410}]}`
+		`"outcomes":[{"harness":"claude","model":"claude-opus-4-1","outcome":"saved","endedBy":"returned","count":2,"pings":9,"pingCostUsd":0.41,"avoidedUsd":7.8,"netUsd":7.39,"contextTokens":310000,"idleMinutes":410}],` +
+		`"experiments":[{"experiment":"busy-ping-subagents-1","arm":"hold","harness":"claude","model":"claude_opus","episodes":1,"returned":1,"warm":0,"pings":0,"pingCalls":0,"pingCostUsd":0,"rewriteUsd":2.25,"costUsd":2.25,"costSqUsd":5.0625,"contextTokens":150000,"quietMinutes":40},` +
+		`{"experiment":"busy-ping-subagents-1","arm":"ping","harness":"claude","model":"claude-opus-4-1","episodes":2,"returned":2,"warm":2,"pings":3,"pingCalls":3,"pingCostUsd":0.3,"rewriteUsd":0.1,"costUsd":0.4,"costSqUsd":0.08,"contextTokens":300000,"quietMinutes":90}]}`
 	if string(b) != want {
 		t.Fatalf("report\n got %s\nwant %s", b, want)
 	}
@@ -491,5 +517,30 @@ func TestRunStops(t *testing.T) {
 	case <-done:
 	case <-time.After(20 * time.Second):
 		t.Fatal("Run did not return")
+	}
+}
+
+func TestExperimentsOptOut(t *testing.T) {
+	g := newRig(t, t0)
+	day := t0.Truncate(24 * time.Hour)
+	g.stats.mu.Lock()
+	g.stats.days[dayOf(day)] = model.DayStats{Experiments: []model.ExperimentSum{{Experiment: "x", Arm: model.ArmHold, Episodes: 1}}}
+	g.stats.mu.Unlock()
+	r, err := g.r.build(day)
+	if err != nil || len(r.Experiments) != 1 {
+		t.Fatalf("enrolled: %+v %v", r.Experiments, err)
+	}
+	if err := g.r.SetExperiments(false); err != nil {
+		t.Fatal(err)
+	}
+	if st := g.r.Status(); st.Experiments {
+		t.Fatalf("status %+v", st)
+	}
+	if r, _ := g.r.build(day); len(r.Experiments) != 0 {
+		t.Fatalf("opted out but reported: %+v", r.Experiments)
+	}
+	g.set.expLocked = true
+	if err := g.r.SetExperiments(true); !errors.Is(err, apitypes.ErrLocked) {
+		t.Fatalf("locked: %v", err)
 	}
 }

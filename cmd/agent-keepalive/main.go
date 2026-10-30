@@ -8,6 +8,7 @@
 //	agent-keepalive status       is a server running, and where
 //	agent-keepalive stop         stop the running server
 //	agent-keepalive metrics on|off|status|preview|reset-id
+//	agent-keepalive experiments on|off|status
 //	agent-keepalive update check|apply|status
 //	agent-keepalive version
 //
@@ -76,6 +77,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdStop(rest, stdout)
 	case "metrics":
 		err = cmdMetrics(rest, stdout)
+	case "experiments":
+		err = cmdExperiments(rest, stdout)
 	case "update":
 		err = cmdUpdate(rest, stdout)
 	case "version", "--version", "-version":
@@ -126,6 +129,7 @@ Commands:
   status     show whether a server is running
   stop       stop the running server
   metrics    on | off | status | preview | reset-id   (usage reports)
+  experiments on | off | status                       (A/B experiments; docs/experiments.md)
   update     check | apply | status                   (self-update)
   version    print the version, distribution profile and install kind
 

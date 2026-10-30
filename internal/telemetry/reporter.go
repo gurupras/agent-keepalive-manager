@@ -32,6 +32,12 @@ type Settings interface {
 	Token() string
 	// SetEnabled persists the user's choice (apitypes.ErrLocked when fixed).
 	SetEnabled(on bool) error
+	// Experiments reports whether the install takes part in experiments
+	// (docs/experiments.md), whether that is fixed, and by whom.
+	Experiments() (on, locked bool, by string)
+	// SetExperiments persists the user's choice (apitypes.ErrLocked when
+	// fixed).
+	SetExperiments(on bool) error
 }
 
 // maxBackfill is how many days back unsent reports are made and kept; the
@@ -139,6 +145,10 @@ func (r *Reporter) Status() apitypes.MetricsStatus {
 	if locked {
 		st.LockedBy = by
 	}
+	st.Experiments, st.ExperimentsLocked, by = r.opts.Settings.Experiments()
+	if st.ExperimentsLocked {
+		st.ExperimentsLockedBy = by
+	}
 	if on && url != "" {
 		st.Queued = len(r.q.days())
 	}
@@ -198,6 +208,27 @@ func (r *Reporter) SetEnabled(on bool) error {
 	return nil
 }
 
+// SetExperiments turns taking part in experiments on or off and persists
+// the choice. Off stops new episodes at once; episodes closed earlier and
+// not yet reported are left out of reports.
+func (r *Reporter) SetExperiments(on bool) error {
+	cur, locked, _ := r.opts.Settings.Experiments()
+	if locked {
+		if cur != on {
+			return apitypes.ErrLocked
+		}
+		return nil
+	}
+	if r.opts.Settings.URL() == "" {
+		return fmt.Errorf("%w: this build has no usage hub", apitypes.ErrUnavailable)
+	}
+	if err := r.opts.Settings.SetExperiments(on); err != nil {
+		return err
+	}
+	r.notify()
+	return nil
+}
+
 // ResetID replaces the install id with a new random one. Reports already
 // queued keep the id they were made with.
 func (r *Reporter) ResetID() error {
@@ -250,6 +281,9 @@ func (r *Reporter) buildFrom(ds model.DayStats) (Report, error) {
 			return Report{}, fmt.Errorf("install id: %w", err)
 		}
 		r.installID = id
+	}
+	if on, _, _ := r.opts.Settings.Experiments(); !on {
+		ds.Experiments = nil
 	}
 	return BuildReport(r.installID, r.opts.Build, ds), nil
 }

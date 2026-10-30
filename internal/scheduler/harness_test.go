@@ -262,6 +262,7 @@ type harness struct {
 	svc   *Service
 	mu    sync.Mutex
 	dead  map[int]bool
+	exp   bool // the install takes part in experiments
 }
 
 func newHarness(t *testing.T) *harness {
@@ -284,6 +285,12 @@ func (h *harness) alive(pid int, _ string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return !h.dead[pid]
+}
+
+func (h *harness) enrolled() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.exp
 }
 
 func (h *harness) kill(pid int) {
@@ -309,7 +316,8 @@ func (h *harness) openService() {
 		Store: st, Sources: []model.Source{h.src, h.codex},
 		Deliverers: []model.Deliverer{h.del, h.cdel},
 		Pricing:    pricing.Default(), Now: h.clock.Now, Alive: h.alive,
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log:         slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Experiments: h.enrolled,
 	})
 	if err != nil {
 		h.t.Fatal(err)

@@ -38,7 +38,7 @@ The token is what keeps other local users and other programs out: the server bin
 | `GET /api/settings` | | `Settings` |
 | `PUT /api/settings` | `Settings` | `Settings` (validated: 0.5 ≤ maxHours ≤ 168, 1 ≤ marginMin ≤ 15, 2 ≤ scanSeconds ≤ 60) |
 | `GET /api/metrics` | | `MetricsStatus` |
-| `PUT /api/metrics` | `{enabled: bool}` | `MetricsStatus`; 403 when locked |
+| `PUT /api/metrics` | `{enabled: bool}`, `{experiments: bool}` or both | `MetricsStatus`; 403 when locked |
 | `GET /api/metrics/preview` | | the next report exactly as it would be sent (docs/metrics.md) |
 | `POST /api/metrics/reset-id` | | `MetricsStatus` with a new `installId` |
 | `GET /api/update` | | `UpdateStatus` |
@@ -73,7 +73,10 @@ The token is what keeps other local users and other programs out: the server bin
   "installId": "8d3c…",       // the pseudonymous id reports carry
   "lastSent": "2026-10-27T10:00:00Z",
   "lastError": "",
-  "queued": 0                 // reports waiting to be sent
+  "queued": 0,                // reports waiting to be sent
+  "experiments": true,        // takes part in experiments (docs/experiments.md); they run only while enabled
+  "experimentsLocked": false,
+  "experimentsLockedBy": ""   // "admin" | "profile" when experimentsLocked
 }
 ```
 

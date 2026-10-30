@@ -14,8 +14,8 @@ import (
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-// Schema is the report schema version.
-const Schema = 1
+// Schema is the report schema version. Schema 2 added Experiments.
+const Schema = 2
 
 // Report is one install's usage for one UTC day: the body POSTed to the
 // hub. The field order is the documented one.
@@ -32,6 +32,9 @@ type Report struct {
 	Plans       Plans          `json:"plans"`
 	Pings       Pings          `json:"pings"`
 	Outcomes    []Outcome      `json:"outcomes"`
+	// Experiments sums the experiment episodes closed on the day; empty
+	// when the install does not take part (docs/experiments.md).
+	Experiments []model.ExperimentSum `json:"experiments"`
 }
 
 // Plans counts the plans started on the day.
@@ -97,7 +100,8 @@ func BuildReport(installID string, b Build, ds model.DayStats) Report {
 			Failed:   count(ds.Pings.Failed),
 			CostUSD:  amount(ds.Pings.CostUSD),
 		},
-		Outcomes: []Outcome{},
+		Outcomes:    []Outcome{},
+		Experiments: []model.ExperimentSum{},
 	}
 	for h, n := range ds.Sessions {
 		if n > 0 {
@@ -140,7 +144,56 @@ func BuildReport(installID string, b Build, ds model.DayStats) Report {
 		}
 		return a.EndedBy < b.EndedBy
 	})
+	r.Experiments = experiments(ds.Experiments)
 	return r
+}
+
+// experiments sanitises experiment sums, merging those that sanitise to
+// the same group.
+func experiments(in []model.ExperimentSum) []model.ExperimentSum {
+	type key struct{ x, a, h, m string }
+	idx := map[key]int{}
+	out := []model.ExperimentSum{}
+	for _, e := range in {
+		k := key{Sanitize(e.Experiment), Sanitize(e.Arm), Sanitize(string(e.Harness)), Sanitize(e.Model)}
+		i, ok := idx[k]
+		if !ok {
+			i = len(out)
+			idx[k] = i
+			out = append(out, model.ExperimentSum{Experiment: k.x, Arm: k.a, Harness: model.Harness(k.h), Model: k.m})
+		}
+		s := &out[i]
+		s.Episodes += count(e.Episodes)
+		s.Returned += count(e.Returned)
+		s.Warm += count(e.Warm)
+		s.Pings += count(e.Pings)
+		s.PingCalls += count(e.PingCalls)
+		s.PingCostUSD += finite(max(e.PingCostUSD, 0))
+		s.RewriteUSD += finite(max(e.RewriteUSD, 0))
+		s.CostSqUSD += finite(max(e.CostSqUSD, 0))
+		s.ContextTokens += max(e.ContextTokens, 0)
+		s.QuietMinutes += max(e.QuietMinutes, 0)
+	}
+	for i := range out {
+		s := &out[i]
+		s.PingCostUSD, s.RewriteUSD = round(s.PingCostUSD), round(s.RewriteUSD)
+		s.CostUSD = round(s.PingCostUSD + s.RewriteUSD)
+		s.CostSqUSD = round(s.CostSqUSD)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Experiment != b.Experiment {
+			return a.Experiment < b.Experiment
+		}
+		if a.Arm != b.Arm {
+			return a.Arm < b.Arm
+		}
+		if a.Harness != b.Harness {
+			return a.Harness < b.Harness
+		}
+		return a.Model < b.Model
+	})
+	return out
 }
 
 // empty reports whether a day had no activity at all.
@@ -150,7 +203,8 @@ func empty(ds model.DayStats) bool {
 			return false
 		}
 	}
-	return ds.Plans == (model.DayPlans{}) && ds.Pings == (model.DayPings{}) && len(ds.Outcomes) == 0
+	return ds.Plans == (model.DayPlans{}) && ds.Pings == (model.DayPings{}) && len(ds.Outcomes) == 0 &&
+		len(ds.Experiments) == 0
 }
 
 // MaxLen is the longest string the hub accepts.

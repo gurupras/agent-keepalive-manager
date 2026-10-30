@@ -366,7 +366,7 @@ func (s *Service) rebuildViews(now time.Time) {
 		sess.CacheTTL = model.Duration(ttl)
 		v := model.SessionView{Session: sess, Costs: s.costs(sess)}
 		switch {
-		case sess.Status == model.StatusWorking:
+		case sess.Status == model.StatusWorking && sess.Quiet == "":
 			v.CacheExpiresAt = now.Add(ttl)
 		case !sess.LastCall.IsZero():
 			v.CacheExpiresAt = sess.LastCall.Add(ttl)
@@ -374,6 +374,7 @@ func (s *Service) rebuildViews(now time.Time) {
 		if pr, ok := s.plans[sess.Key]; ok {
 			p := pr.Plan.Plan
 			v.Plan = &p
+			v.Experiment = experimentView(pr)
 		}
 		t := s.totals[sess.Key]
 		v.SavedTotal, v.WastedTotal = t.Saved, t.Wasted
@@ -398,7 +399,7 @@ func fingerprint(vs []model.SessionView) string {
 	h := fnv.New128a()
 	enc := json.NewEncoder(h)
 	for _, v := range vs {
-		if v.Status == model.StatusWorking {
+		if v.Status == model.StatusWorking && v.Quiet == "" {
 			v.CacheExpiresAt = time.Time{}
 		}
 		_ = enc.Encode(v)

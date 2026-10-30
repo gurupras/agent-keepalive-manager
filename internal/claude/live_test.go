@@ -33,8 +33,8 @@ func TestLive(t *testing.T) {
 	}
 	t.Logf("second scan: %v", time.Since(start))
 	for _, s := range ss {
-		t.Logf("%s pid=%d status=%s reach=%s %q ctx=%d ttl=%v lastCall=%v acts=%d",
-			s.Key, s.PID, s.Status, s.Reach, s.Title, s.ContextTokens, s.CacheTTL.Std(), s.LastCall, len(src.Activity(s.Key, 0)))
+		t.Logf("%s pid=%d status=%s/%s quiet=%s reach=%s %q ctx=%d ttl=%v lastCall=%v acts=%d",
+			s.Key, s.PID, s.Status, s.HarnessStatus, s.Quiet, s.Reach, s.Title, s.ContextTokens, s.CacheTTL.Std(), s.LastCall, len(src.Activity(s.Key, 0)))
 	}
 	cwd := os.Getenv("KA_LIVE_CWD")
 	if cwd == "" {

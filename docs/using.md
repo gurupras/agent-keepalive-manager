@@ -80,6 +80,6 @@ With *Show missed savings* on in Settings, this view replays your recent transcr
 | Scan every (seconds) | How often sessions and transcripts are read. |
 | Show missed savings | Turns on the Missed view. |
 | Theme | System, light or dark. |
-| Usage reports | Whether the daily usage report is sent, and a preview of it. See [Usage reports and privacy](/metrics). |
+| Usage reports | Whether the daily usage report is sent, and a preview of it, and whether this install takes part in experiments. See [Usage reports and privacy](/metrics) and [Experiments](/experiments). |
 
 The sidebar's header has Settings, a light/dark switch, and a menu with **Check for updates**, **About** and **Quit**, which stops the server (click it twice).

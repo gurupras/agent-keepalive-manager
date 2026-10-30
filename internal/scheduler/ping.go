@@ -41,6 +41,9 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 	if pr != nil {
 		pr.lastTry = now
 		rec.PlanID = pr.ID
+		if pr.treat && pr.ep != nil {
+			rec.EpisodeID, rec.Experiment = pr.ep.ID, true
+		}
 		if pr.seg == nil {
 			g := store.Segment{
 				PlanID: pr.ID, Key: pr.Key, Harness: sess.Harness, Model: sess.Model, Title: sess.Title,
@@ -71,6 +74,10 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 	}
 	if newSeg != nil {
 		pr.seg = newSeg
+	}
+	if rec.EpisodeID != 0 {
+		pr.ep.pings++
+		s.expPings++
 	}
 	s.pings[id] = &pingRun{Ping: rec, model: mdl, sess: sess, prevRefresh: sess.LastCall}
 	s.inflight[sess.Key] = id
@@ -228,6 +235,9 @@ func (s *Service) matchPing(ctx context.Context, now time.Time, key string, a mo
 		if pp != nil {
 			pp.PingCost += p.Cost - old
 		}
+		if p.EpisodeID != 0 && store.Day(p.SentAt) == s.expDay {
+			s.expCost += p.Cost - old
+		}
 		s.savePing(ctx, p)
 		if !wasVerified && pp != nil {
 			s.onVerified(ctx, now, pp, p, a)
@@ -286,7 +296,13 @@ func (s *Service) settlePings(ctx context.Context, now time.Time) {
 		p.State = model.PingLost
 		p.Error = "delivered but never seen in the transcript"
 		s.savePing(ctx, p)
-		if pp := s.planByID(p.PlanID); pp != nil {
+		if pp := s.planByID(p.PlanID); pp != nil && p.EpisodeID != 0 {
+			// A busy session may hold a ping back (a permission prompt):
+			// the treatment stops for this episode, the plan goes on.
+			if pp.ep != nil && pp.ep.ID == p.EpisodeID {
+				pp.ep.maxPings = pp.ep.pings
+			}
+		} else if pp != nil {
 			s.pause(ctx, pp, fmt.Sprintf("ping %s was delivered but never appeared in the transcript", p.ID))
 		}
 	}

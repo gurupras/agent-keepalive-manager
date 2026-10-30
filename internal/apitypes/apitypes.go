@@ -123,6 +123,11 @@ type MetricsStatus struct {
 	LastSent  time.Time `json:"lastSent,omitzero"`
 	LastError string    `json:"lastError,omitempty"`
 	Queued    int       `json:"queued"` // reports waiting to be sent
+	// Experiments: the install takes part in experiments
+	// (docs/experiments.md). They run only while reporting is on too.
+	Experiments         bool   `json:"experiments"`
+	ExperimentsLocked   bool   `json:"experimentsLocked"`
+	ExperimentsLockedBy string `json:"experimentsLockedBy,omitempty"`
 }
 
 // Metrics is usage reporting as the API and the CLI use it. Implemented by
@@ -133,6 +138,9 @@ type Metrics interface {
 	// user config. Off takes effect at once and drops queued reports.
 	// Returns ErrLocked when the choice is fixed.
 	SetEnabled(on bool) error
+	// SetExperiments turns taking part in experiments on or off and
+	// persists the choice. Returns ErrLocked when the choice is fixed.
+	SetExperiments(on bool) error
 	// Preview returns the next report exactly as it would be sent
 	// (docs/metrics.md); it is marshalled as-is.
 	Preview() (any, error)

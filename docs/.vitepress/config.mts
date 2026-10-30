@@ -45,7 +45,7 @@ export default defineConfig({
   themeConfig: {
     logo: '/favicon.svg',
     nav: [
-      { text: 'Guide', link: '/getting-started', activeMatch: '^/(getting-started|install|using|cli|agents|metrics)' },
+      { text: 'Guide', link: '/getting-started', activeMatch: '^/(getting-started|install|using|cli|agents|metrics|experiments)' },
       { text: 'Reference', link: '/architecture', activeMatch: '^/(architecture|api|release-artifacts|package-repositories)' },
       { text: 'Self-hosting', link: '/self-hosting', activeMatch: '^/(self-hosting|releasing)' },
       { text: 'Downloads', link: '/download/', target: '_self' },
@@ -60,6 +60,7 @@ export default defineConfig({
           { text: 'Command line', link: '/cli' },
           { text: 'Agents and swarms (MCP)', link: '/agents' },
           { text: 'Usage reports and privacy', link: '/metrics' },
+          { text: 'Experiments', link: '/experiments' },
         ],
       },
       {

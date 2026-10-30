@@ -101,6 +101,10 @@ func (m remoteMetrics) SetEnabled(on bool) error {
 	return m.c.do("PUT", "api/metrics", map[string]bool{"enabled": on}, nil)
 }
 
+func (m remoteMetrics) SetExperiments(on bool) error {
+	return m.c.do("PUT", "api/metrics", map[string]bool{"experiments": on}, nil)
+}
+
 func (m remoteMetrics) Preview() (any, error) {
 	var v json.RawMessage
 	err := m.c.do("GET", "api/metrics/preview", nil, &v)

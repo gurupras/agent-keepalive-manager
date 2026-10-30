@@ -19,6 +19,7 @@ To run the server and web UI without the window, name the command: `agent-keepal
 | `status` | Show whether a server is running, and where. |
 | `stop` | Stop the running server. |
 | `metrics on \| off \| status \| preview \| reset-id` | Usage reports: turn them on or off, show the current state, print the next report exactly as it would be sent, or start over with a new random install id. See [Usage reports and privacy](/metrics). |
+| `experiments on \| off \| status` | Experiments: take part or not, or show the current state. They run only while usage reports are on. See [Experiments](/experiments). |
 | `update check \| apply \| status` | Look for a newer version, install it, or show the update state. On a package-manager install, `check` prints the command to run instead (`apt`, `dnf`, `zypper`, `pacman` or `brew`). |
 | `version` | Print the version, the distribution profile and how it was installed. |
 
@@ -83,6 +84,7 @@ Plans, pings, the ledger and settings live in a SQLite database in the data dire
 | `AGENT_KEEPALIVE_METRICS` | `on` or `off`: usage reports. |
 | `AGENT_KEEPALIVE_METRICS_URL` | Send usage reports to this hub instead. |
 | `AGENT_KEEPALIVE_METRICS_TOKEN` | Bearer token for a hub that requires one. |
+| `AGENT_KEEPALIVE_EXPERIMENTS` | `on` or `off`: taking part in [experiments](/experiments). |
 | `AGENT_KEEPALIVE_FRAME_ANCESTORS` | Same as `--frame-ancestors`. |
 | `PORT` | Same as `--port`, for `serve`. |
 | `CLAUDE_CONFIG_DIR` | Where Claude Code keeps its state. Default `~/.claude`. |

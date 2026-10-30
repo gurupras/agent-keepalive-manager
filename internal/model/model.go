@@ -126,7 +126,10 @@ type Session struct {
 	// one (Claude Code: idle, busy, shell = background commands running
 	// after the turn ended, waiting = a permission prompt or question).
 	HarnessStatus string `json:"harnessStatus,omitempty"`
-	Reach         Reach  `json:"reach"`
+	// Quiet says why a session the harness reports as working makes no API
+	// calls of its own (its cache cools as when idle), or "".
+	Quiet QuietCause `json:"quiet,omitempty"`
+	Reach Reach      `json:"reach"`
 	// ReachWhy explains ReachNone.
 	ReachWhy string `json:"reachWhy,omitempty"`
 
@@ -235,6 +238,9 @@ type PingRecord struct {
 	// Cold: the reply re-wrote the context, so the cache had already expired.
 	Cold  bool   `json:"cold"`
 	Error string `json:"error,omitempty"`
+	// Experiment marks a ping sent by an experiment's treatment arm into a
+	// session the harness reported as working (docs/experiments.md).
+	Experiment bool `json:"experiment,omitempty"`
 }
 
 // Outcome of a ledger segment.
@@ -296,6 +302,8 @@ type SessionView struct {
 	Plan           *Plan     `json:"plan,omitempty"`
 	SavedTotal     float64   `json:"savedTotal"`
 	WastedTotal    float64   `json:"wastedTotal"`
+	// Experiment is the experiment episode open for the session, if any.
+	Experiment *ExperimentView `json:"experiment,omitempty"`
 }
 
 // Totals summarises the ledger.
@@ -377,6 +385,9 @@ type DayStats struct {
 	Plans    DayPlans        `json:"plans"`
 	Pings    DayPings        `json:"pings"`
 	Outcomes []OutcomeSum    `json:"outcomes"`
+	// Experiments sums the experiment episodes closed on the day; empty
+	// when the install does not take part.
+	Experiments []ExperimentSum `json:"experiments"`
 }
 
 // DayPlans counts the plans started on a day.

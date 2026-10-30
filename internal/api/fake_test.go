@@ -214,6 +214,16 @@ func (m *fakeMetrics) SetEnabled(on bool) error {
 	return nil
 }
 
+func (m *fakeMetrics) SetExperiments(on bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.st.ExperimentsLocked {
+		return fmt.Errorf("experiments.enabled: %w", apitypes.ErrLocked)
+	}
+	m.st.Experiments = on
+	return nil
+}
+
 func (m *fakeMetrics) Preview() (any, error) { return map[string]any{"schema": 1}, nil }
 
 func (m *fakeMetrics) ResetID() error { m.resets++; return nil }

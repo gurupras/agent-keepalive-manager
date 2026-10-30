@@ -91,6 +91,9 @@ type Config struct {
 	// Alive reports whether pid still runs the process whose start token
 	// is start ("" = any). Defaults to proc.Alive.
 	Alive func(pid int, start string) bool
+	// Experiments reports whether the install takes part in experiments
+	// (internal/experiment). Nil means it does not.
+	Experiments func() bool
 }
 
 // Service implements model.Service and model.Stats.
@@ -126,6 +129,12 @@ type Service struct {
 	viewsFP   string
 	subs      map[int]chan model.Event
 	nextSub   int
+
+	expSalt    string          // assigns episodes to arms
+	expStopped map[string]bool // experiments the stop rule ended on this install
+	expDay     string          // UTC day expPings and expCost count
+	expPings   int             // treatment pings sent on expDay
+	expCost    float64         // what they cost
 }
 
 var (
@@ -169,6 +178,7 @@ func New(cfg Config) (*Service, error) {
 		learned:     map[string]time.Duration{},
 		sighted:     map[string]bool{},
 		subs:        map[int]chan model.Event{},
+		expStopped:  map[string]bool{},
 	}
 	for _, src := range cfg.Sources {
 		s.sources[src.Harness()] = src
@@ -203,6 +213,9 @@ func (s *Service) restore(ctx context.Context) error {
 		if sec, err := strconv.ParseFloat(v, 64); err == nil && sec > 0 {
 			s.learned[strings.TrimPrefix(k, learnPrefix)] = time.Duration(sec * float64(time.Second))
 		}
+	}
+	if err := s.restoreExperiments(ctx); err != nil {
+		return err
 	}
 	if s.totals, err = st.TotalsByKey(ctx); err != nil {
 		return fmt.Errorf("scheduler: load totals: %w", err)

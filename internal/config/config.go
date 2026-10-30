@@ -7,7 +7,7 @@
 //  1. the admin file (per-OS path, see AdminPath), whose "locked" list
 //     freezes keys;
 //  2. the environment (AGENT_KEEPALIVE_METRICS, AGENT_KEEPALIVE_METRICS_URL,
-//     AGENT_KEEPALIVE_METRICS_TOKEN);
+//     AGENT_KEEPALIVE_METRICS_TOKEN, AGENT_KEEPALIVE_EXPERIMENTS);
 //  3. the user file, <data dir>/config.json;
 //  4. the distribution profile (internal/distro);
 //  5. built-in defaults.
@@ -45,6 +45,9 @@ const (
 	MetricsEnabled = "metrics.enabled" // bool
 	MetricsURL     = "metrics.url"     // string: the hub; "" disables reporting
 	MetricsToken   = "metrics.token"   // string: bearer token for the hub; never shown
+	// ExperimentsEnabled: take part in experiments (docs/experiments.md).
+	// On by default; experiments run only while metrics are reported too.
+	ExperimentsEnabled = "experiments.enabled" // bool
 )
 
 // Layer names a configuration layer (Setting.Source, Setting.LockedBy).
@@ -73,9 +76,10 @@ type keyDef struct {
 }
 
 var keys = map[string]keyDef{
-	MetricsEnabled: {kind: kindBool, env: "AGENT_KEEPALIVE_METRICS"},
-	MetricsURL:     {kind: kindString, env: "AGENT_KEEPALIVE_METRICS_URL"},
-	MetricsToken:   {kind: kindString, env: "AGENT_KEEPALIVE_METRICS_TOKEN", secret: true},
+	MetricsEnabled:     {kind: kindBool, env: "AGENT_KEEPALIVE_METRICS"},
+	MetricsURL:         {kind: kindString, env: "AGENT_KEEPALIVE_METRICS_URL"},
+	MetricsToken:       {kind: kindString, env: "AGENT_KEEPALIVE_METRICS_TOKEN", secret: true},
+	ExperimentsEnabled: {kind: kindBool, env: "AGENT_KEEPALIVE_EXPERIMENTS"},
 }
 
 // Keys returns every known key, sorted.
@@ -292,6 +296,8 @@ func (c *Config) profileValue(key string, def keyDef) (any, Layer) {
 		if p.MetricsURL != "" {
 			return p.MetricsURL, LayerProfile
 		}
+	case ExperimentsEnabled:
+		return true, LayerDefault
 	}
 	if def.kind == kindBool {
 		return false, LayerDefault

@@ -22,3 +22,22 @@ func (m MetricsSettings) Token() string { return m.Config.String(config.MetricsT
 
 // SetEnabled persists the user's choice.
 func (m MetricsSettings) SetEnabled(on bool) error { return m.Config.Set(config.MetricsEnabled, on) }
+
+// Experiments reports whether the install takes part in experiments.
+func (m MetricsSettings) Experiments() (on, locked bool, by string) {
+	s := m.Config.Get(config.ExperimentsEnabled)
+	return m.Config.Bool(config.ExperimentsEnabled), s.Locked, string(s.LockedBy)
+}
+
+// SetExperiments persists the user's choice.
+func (m MetricsSettings) SetExperiments(on bool) error {
+	return m.Config.Set(config.ExperimentsEnabled, on)
+}
+
+// Enrolled reports whether experiments run: the install takes part and its
+// usage reports, which carry the results, go to a hub.
+func (m MetricsSettings) Enrolled() bool {
+	on, _, _ := m.Enabled()
+	exp, _, _ := m.Experiments()
+	return on && exp && m.URL() != ""
+}
