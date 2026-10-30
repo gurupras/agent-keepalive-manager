@@ -132,24 +132,25 @@ fn run(url: Option<Url>, data_dir: Option<PathBuf>) -> tauri::Result<()> {
             let server: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
             let nav_server = server.clone();
             #[allow(unused_mut)]
-            let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("agent-keepalive")
-                .inner_size(1280.0, 860.0)
-                .min_inner_size(480.0, 400.0)
-                .on_navigation(move |u| {
-                    if is_loading_page(u)
-                        || u.as_str() == "about:blank"
-                        || nav_server.get() == Some(&u.origin().ascii_serialization())
-                    {
-                        return true;
-                    }
-                    open_external(u);
-                    false
-                })
-                .on_new_window(move |u, _| {
-                    open_external(&u);
-                    NewWindowResponse::Deny
-                });
+            let mut b =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("agent-keepalive")
+                    .inner_size(1280.0, 860.0)
+                    .min_inner_size(480.0, 400.0)
+                    .on_navigation(move |u| {
+                        if is_loading_page(u)
+                            || u.as_str() == "about:blank"
+                            || nav_server.get() == Some(&u.origin().ascii_serialization())
+                        {
+                            return true;
+                        }
+                        open_external(u);
+                        false
+                    })
+                    .on_new_window(move |u, _| {
+                        open_external(&u);
+                        NewWindowResponse::Deny
+                    });
             // The webview's storage (theme, pinned projects) lives with the
             // rest of the state, so a portable install stays in its folder.
             // macOS has no such setting; WKWebView keeps it per app.
@@ -422,7 +423,10 @@ mod tests {
 
     #[test]
     fn js_strings() {
-        assert_eq!(js_string("a\"b\\c\nd</script>"), r#""a\"b\\c\nd\u003c/script>""#);
+        assert_eq!(
+            js_string("a\"b\\c\nd</script>"),
+            r#""a\"b\\c\nd\u003c/script>""#
+        );
         assert_eq!(js_string("\u{1}"), r#""\u0001""#);
     }
 
