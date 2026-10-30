@@ -97,6 +97,9 @@ type state struct {
 	Seen      []string  `json:"seen,omitempty"`
 	LastSent  time.Time `json:"lastSent,omitzero"`
 	LastError string    `json:"lastError,omitempty"`
+	// Announced is the version whose first report went out early, the
+	// day's report so far (Reporter.announce).
+	Announced string `json:"announced,omitempty"`
 }
 
 func loadState(dataDir string) (state, bool) {

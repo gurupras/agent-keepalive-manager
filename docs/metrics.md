@@ -13,6 +13,8 @@ agent-keepalive reports how much keeping caches warm saves to a **hub** (`agent-
 
 One report per install per UTC day, sent once that day is over (and at start-up for any day not sent yet, up to 30 days back). Reports that cannot be sent wait in `<data dir>/metrics-queue/` and are retried with backoff.
 
+A new install, and each new version, also sends the report of the current day so far, 10 minutes after it first starts. The hub then counts it within minutes of an install or update, instead of the next day. The day's full report replaces this early one at the hub, which keeps one report per install and day. Turning reporting off in those 10 minutes means nothing is sent. The app's first window says that usage reports are on and links to the setting.
+
 ```json
 {
   "schema": 2,

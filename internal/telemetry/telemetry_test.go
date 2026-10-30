@@ -142,10 +142,15 @@ type rig struct {
 	hub   *hub
 	now   time.Time
 	dir   string
+	// announce is the AnnounceDelay; tests that do not exercise it leave
+	// it off.
+	announce time.Duration
+	version  string
 }
 
 func newRig(t *testing.T, now time.Time) *rig {
-	g := &rig{hub: newHub(t), now: now, dir: t.TempDir(), stats: &fakeStats{days: map[string]model.DayStats{}}}
+	g := &rig{hub: newHub(t), now: now, dir: t.TempDir(), stats: &fakeStats{days: map[string]model.DayStats{}},
+		announce: -1, version: "1.4.0"}
 	g.set = &fakeSettings{on: true, url: g.hub.URL + "/base/", token: "tok"}
 	g.open()
 	return g
@@ -154,14 +159,15 @@ func newRig(t *testing.T, now time.Time) *rig {
 // open (re)creates the reporter over the same data dir, like a restart.
 func (g *rig) open() {
 	g.r = New(Options{
-		DataDir:    g.dir,
-		Build:      Build{Version: "1.4.0", OS: "linux", Arch: "amd64", Profile: "public", InstallKind: "deb"},
-		Stats:      g.stats,
-		Settings:   g.set,
-		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		SendJitter: -1,
-		RetryMin:   time.Minute,
-		now:        func() time.Time { return g.now },
+		DataDir:       g.dir,
+		Build:         Build{Version: g.version, OS: "linux", Arch: "amd64", Profile: "public", InstallKind: "deb"},
+		Stats:         g.stats,
+		Settings:      g.set,
+		Log:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		SendJitter:    -1,
+		RetryMin:      time.Minute,
+		AnnounceDelay: g.announce,
+		now:           func() time.Time { return g.now },
 	})
 }
 
@@ -579,5 +585,63 @@ func TestReportWithoutExperimentsIsSchema1(t *testing.T) {
 	b, _ := json.Marshal(r)
 	if r.Schema != 1 || strings.Contains(string(b), "experiments") {
 		t.Fatalf("report %s", b)
+	}
+}
+
+// A new install, and each new version, reports today so far within
+// AnnounceDelay of start-up; the day's full report replaces it later.
+func TestAnnounce(t *testing.T) {
+	g := newRig(t, t0)
+	g.announce = 10 * time.Minute
+	g.open()
+	g.stats.mu.Lock()
+	g.stats.days[dayOf(t0)] = activeDay(dayOf(t0), 1)
+	g.stats.mu.Unlock()
+	ctx := context.Background()
+
+	if wait := g.r.pass(ctx); wait != 10*time.Minute || len(g.hub.got) != 0 {
+		t.Fatalf("before the delay: wait %v, sent %d", wait, len(g.hub.got))
+	}
+	g.now = t0.Add(10 * time.Minute)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 1 || g.hub.got[0].Day != dayOf(t0) || g.hub.got[0].Version != "1.4.0" {
+		t.Fatalf("announce %+v", g.hub.got)
+	}
+	// Once per version, restarts included.
+	g.open()
+	g.now = t0.Add(30 * time.Minute)
+	if wait := g.r.pass(ctx); len(g.hub.got) != 1 || wait < time.Hour {
+		t.Fatalf("announced again: %d, wait %v", len(g.hub.got), wait)
+	}
+	// The day ends: its full report goes out, the same day again.
+	g.now = t0.Add(14*time.Hour + time.Second)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 2 || g.hub.got[1].Day != dayOf(t0) {
+		t.Fatalf("day report %+v", g.hub.got)
+	}
+	// An update announces itself.
+	g.version = "1.5.0"
+	g.open()
+	g.now = g.now.Add(10 * time.Minute)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 3 || g.hub.got[2].Version != "1.5.0" {
+		t.Fatalf("update %+v", g.hub.got)
+	}
+}
+
+// Turning reporting off before the delay is up sends nothing.
+func TestAnnounceOptOut(t *testing.T) {
+	g := newRig(t, t0)
+	g.announce = 10 * time.Minute
+	g.open()
+	ctx := context.Background()
+	g.r.pass(ctx)
+	if err := g.r.SetEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	g.now = t0.Add(time.Hour)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 0 || len(g.queued()) != 0 {
+		t.Fatalf("sent %+v, queued %v", g.hub.got, g.queued())
 	}
 }

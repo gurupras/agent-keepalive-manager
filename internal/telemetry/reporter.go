@@ -58,6 +58,10 @@ type Options struct {
 	// RetryMin and RetryMax bound the backoff between failed sends
 	// (defaults 1 min and 6 h).
 	RetryMin, RetryMax time.Duration
+	// AnnounceDelay is how long after start-up the first report of a new
+	// install or version goes out, today's so far (default 10 min;
+	// negative: none). It gives the user time to turn reporting off.
+	AnnounceDelay time.Duration
 
 	now func() time.Time
 }
@@ -80,7 +84,8 @@ type Reporter struct {
 	nextSub    int
 	notifyMu   sync.Mutex
 
-	poke chan struct{}
+	poke    chan struct{}
+	started time.Time // when New ran; announcing waits AnnounceDelay from it
 }
 
 // New returns a Reporter. It does nothing until Run.
@@ -106,6 +111,9 @@ func New(opts Options) *Reporter {
 	if opts.RetryMax <= 0 {
 		opts.RetryMax = 6 * time.Hour
 	}
+	if opts.AnnounceDelay == 0 {
+		opts.AnnounceDelay = 10 * time.Minute
+	}
 	if opts.now == nil {
 		opts.now = func() time.Time { return time.Now().Round(0) }
 	}
@@ -115,6 +123,7 @@ func New(opts Options) *Reporter {
 		subs: map[int]func(apitypes.MetricsStatus){},
 		poke: make(chan struct{}, 1),
 	}
+	r.started = opts.now()
 	r.installID = readInstallID(opts.DataDir)
 	r.st, r.loaded = loadState(opts.DataDir)
 	return r
@@ -389,6 +398,37 @@ func (r *Reporter) catchUp(now time.Time) {
 	}
 }
 
+// announce queues today's report so far once per version: the hub then
+// learns of a new install or an update within minutes rather than after
+// the day ends, and the day's full report replaces it (the hub keeps one
+// per install and day). It waits AnnounceDelay from start-up and returns
+// when to call again, or zero. Call with r.mu held, while active.
+func (r *Reporter) announce(now time.Time) time.Time {
+	if r.st.Announced == r.opts.Build.Version || r.opts.AnnounceDelay < 0 {
+		return time.Time{}
+	}
+	if at := r.started.Add(r.opts.AnnounceDelay); now.Before(at) {
+		return at
+	}
+	today := now.UTC().Truncate(24 * time.Hour)
+	rep, err := r.build(today)
+	var b []byte
+	if err == nil {
+		b, err = json.Marshal(rep)
+	}
+	if err == nil {
+		err = r.q.put(dayOf(today), b)
+	}
+	if err != nil {
+		r.opts.Log.Warn("metrics: could not queue the first report of this version", "err", err)
+		return time.Time{} // tried again on the next pass
+	}
+	r.st.Announced = r.opts.Build.Version
+	r.save()
+	r.opts.Log.Debug("metrics: first report of this version queued", "version", rep.Version)
+	return time.Time{}
+}
+
 // Run makes and sends reports until ctx ends: at start-up for any day not
 // sent yet, then after each UTC day ends. Call it once.
 func (r *Reporter) Run(ctx context.Context) {
@@ -426,8 +466,10 @@ func (r *Reporter) pass(ctx context.Context) time.Duration {
 	before := len(r.q.days())
 	r.sync(now)
 	active := r.active()
+	var announceAt time.Time
 	if active {
 		r.catchUp(now)
+		announceAt = r.announce(now)
 	}
 	changed := len(r.q.days()) != before
 	r.mu.Unlock()
@@ -437,6 +479,9 @@ func (r *Reporter) pass(ctx context.Context) time.Duration {
 	next := nextMidnight(now)
 	if r.opts.SendJitter > 0 {
 		next = next.Add(rand.N(r.opts.SendJitter))
+	}
+	if !announceAt.IsZero() && announceAt.Before(next) {
+		next = announceAt
 	}
 	if active {
 		if retry := r.sendDue(ctx); !retry.IsZero() && retry.Before(next) {
