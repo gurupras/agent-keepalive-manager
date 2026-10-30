@@ -102,7 +102,7 @@ On by default (opt-out), per the profile. Reports are pseudonymous: a random ins
 | Install kind (recorded at install) | UI notification | Action |
 |---|---|---|
 | Windows setup, Windows portable, AppImage, archive | "vX is available" + **Update** | download, verify signature + sha256, swap the binary (the portable exe carries its window; the setup replaces both), restart; the UI reconnects |
-| deb, rpm, arch, Homebrew | "vX is available" + the package-manager command (`apt`, `dnf`, `pacman`, `brew upgrade`) | packages register the signed repository (Homebrew: the tap); the package manager updates |
+| deb, rpm, arch, Homebrew | "vX is available" + the package-manager command (`apt`, `dnf`, `pacman`, `brew upgrade`) | packages register the signed repository (Homebrew: the tap); the package manager updates. Then "vX is installed" + **Restart** while the old version still runs |
 | macOS pkg | **Update** | download + verify the new pkg, open Installer |
 | supervised (`--no-update`) | none | |
 

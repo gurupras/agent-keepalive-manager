@@ -277,6 +277,9 @@ func printUpdate(w io.Writer, st apitypes.UpdateStatus) {
 		printf(w, "latest: %s\n", st.Latest.Version)
 	}
 	printf(w, "state: %s\nlast check: %s\n", st.State, fmtTime(st.LastCheck))
+	if st.Action == apitypes.ActionRestart {
+		printf(w, "installed: %s (the server still runs %s)\nrun: agent-keepalive update apply   (restarts the server into it)\n", st.Installed, st.Current)
+	}
 	if st.State == apitypes.UpdateAvailable {
 		switch st.Action {
 		case apitypes.ActionApply:

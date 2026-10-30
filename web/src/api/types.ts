@@ -204,7 +204,7 @@ export interface MetricsStatus {
 }
 
 export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'installing' | 'error'
-export type UpdateAction = 'apply' | 'command' | 'download'
+export type UpdateAction = 'apply' | 'command' | 'download' | 'restart'
 
 export interface Latest {
   version: string
@@ -224,6 +224,8 @@ export interface UpdateStatus {
   progress: number
   action?: UpdateAction
   command?: string
+  /** with action 'restart': the newer version installed in place of the running one */
+  installed?: string
   error?: string
   lastCheck?: string
 }

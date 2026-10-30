@@ -13,13 +13,14 @@ export function undismissVersion (v: string) {
   dismissed.value = dismissed.value.filter(x => x !== v)
 }
 
-/** showUpdateToast: an update is on offer (or being installed) and not dismissed. */
+/** showUpdateToast: an update is on offer (or being installed), or installed and waiting for a restart, and not dismissed. */
 export const showUpdateToast = computed(() => {
   const u = store.update
   if (!u?.enabled || store.quit) return false
   if (store.updatePhase !== 'idle') return true
-  if (['downloading', 'ready', 'installing'].includes(u.state)) return true
   const v = u.latest?.version
+  if (u.state === 'ready' && u.action === 'restart') return !!v && !dismissed.value.includes(v)
+  if (['downloading', 'ready', 'installing'].includes(u.state)) return true
   if (!v) return false
   if (u.state === 'error') return !dismissed.value.includes(v)
   return u.state === 'available' && !dismissed.value.includes(v)

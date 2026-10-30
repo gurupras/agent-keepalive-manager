@@ -23,3 +23,6 @@ export const Restarting: Story = {
 export const Failed: Story = {
   beforeEach: () => { store.update = { ...store.update!, state: 'error', error: 'The download did not match the signed checksum.' } },
 }
+export const Installed: Story = {
+  beforeEach: () => { store.update = { ...store.update!, state: 'ready', action: 'restart', installed: store.update!.latest?.version } },
+}

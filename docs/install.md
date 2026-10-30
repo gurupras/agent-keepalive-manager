@@ -6,7 +6,7 @@ How each install updates:
 
 | Install | Updates |
 |---|---|
-| apt, dnf, pacman, Homebrew | through the package manager; the UI shows the command |
+| apt, dnf, pacman, Homebrew | through the package manager; the UI shows the command, then offers to restart a running server into the new version |
 | AppImage, Windows setup, Windows portable, archive | the UI's **Update** button (signed feed, verified download, restart) |
 | macOS `.pkg` | **Update** downloads and verifies the new `.pkg` and opens Installer |
 

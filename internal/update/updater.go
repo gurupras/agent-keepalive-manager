@@ -54,13 +54,18 @@ type Options struct {
 	Every time.Duration
 	// FirstCheck is the delay before Run's first check (default 10–60 s).
 	FirstCheck time.Duration
+	// WatchEvery is how often Run looks for a newer program put in place
+	// by something else, such as a package manager (default 1 min). Only
+	// with Restart.
+	WatchEvery time.Duration
 	// TempDir receives Windows installers and macOS packages (default os.TempDir()).
 	TempDir string
 
 	// Hooks for tests.
-	exists   func(string) bool       // default: os.Stat
-	runSetup func(path string) error // default: start `path /S /UPDATE` detached
-	openPkg  func(path string) error // default: `open path`
+	exists   func(string) bool                                      // default: os.Stat
+	runSetup func(path string) error                                // default: start `path /S /UPDATE` detached
+	openPkg  func(path string) error                                // default: `open path`
+	probe    func(ctx context.Context, path string) (string, error) // default: probeVersion
 	now      func() time.Time
 }
 
@@ -82,6 +87,7 @@ type Updater struct {
 	pkgPath string // a downloaded macOS package, for Apply to reopen
 	subs    map[int]func(apitypes.UpdateStatus)
 	nextSub int
+	started stamp // the program file at New, for watch
 
 	notifyMu sync.Mutex
 }
@@ -110,6 +116,12 @@ func New(opts Options) *Updater {
 	if opts.FirstCheck <= 0 {
 		opts.FirstCheck = 10*time.Second + rand.N(50*time.Second)
 	}
+	if opts.WatchEvery <= 0 {
+		opts.WatchEvery = time.Minute
+	}
+	if opts.probe == nil {
+		opts.probe = probeVersion
+	}
 	if opts.TempDir == "" {
 		opts.TempDir = os.TempDir()
 	}
@@ -126,6 +138,9 @@ func New(opts Options) *Updater {
 		opts.now = func() time.Time { return time.Now().Round(0) }
 	}
 	u := &Updater{opts: opts, in: *opts.Install, subs: map[int]func(apitypes.UpdateStatus){}}
+	if opts.Restart != nil {
+		u.started, _ = stampOf(u.in.Target)
+	}
 	_, versionOK := ParseVersion(opts.Version)
 	switch {
 	case opts.Disabled, opts.FeedURL == "":
@@ -194,10 +209,15 @@ func (u *Updater) notify() {
 }
 
 // Run checks shortly after start and then every Options.Every, with
-// jitter, until ctx ends. It returns at once when updates are disabled.
+// jitter, until ctx ends. With a Restart hook it also watches for a newer
+// program installed in place of this one. It returns at once when updates
+// are disabled.
 func (u *Updater) Run(ctx context.Context) {
 	if !u.enabled {
 		return
+	}
+	if u.opts.Restart != nil {
+		go u.watch(ctx)
 	}
 	t := time.NewTimer(u.opts.FirstCheck)
 	defer t.Stop()
@@ -233,7 +253,8 @@ func (u *Updater) Check(ctx context.Context) error {
 	defer u.checkMu.Unlock()
 
 	u.mu.Lock()
-	if u.busy || u.st.State == apitypes.UpdateInstalling {
+	if u.busy || u.st.State == apitypes.UpdateInstalling || u.st.Installed != "" {
+		// A newer version installed in place waits for the restart.
 		u.mu.Unlock()
 		return nil
 	}
@@ -353,10 +374,20 @@ func (u *Updater) Apply(ctx context.Context) error {
 		return nil
 	case u.st.Latest == nil:
 		return fmt.Errorf("%w: no update is available", apitypes.ErrUnavailable)
-	case u.st.Action != apitypes.ActionApply:
-		return fmt.Errorf("%w: this installation is updated with %s", apitypes.ErrUnavailable, u.howToUpdate())
 	case u.st.State == apitypes.UpdateInstalling:
 		return nil
+	case u.st.Action == apitypes.ActionRestart:
+		if u.opts.Restart == nil {
+			return fmt.Errorf("%w: restart agent-keepalive to use version %s", apitypes.ErrUnavailable, u.st.Installed)
+		}
+		u.st.State = apitypes.UpdateInstalling
+		go func() {
+			u.notify()
+			u.opts.Restart(u.in.Target)
+		}()
+		return nil
+	case u.st.Action != apitypes.ActionApply:
+		return fmt.Errorf("%w: this installation is updated with %s", apitypes.ErrUnavailable, u.howToUpdate())
 	}
 	if u.in.Kind == KindMacOSPkg && u.pkgPath != "" {
 		if _, err := os.Stat(u.pkgPath); err == nil {

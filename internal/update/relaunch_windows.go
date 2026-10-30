@@ -15,3 +15,8 @@ func detach(cmd *exec.Cmd) {
 		HideWindow:    true,
 	}
 }
+
+// hide runs cmd without a console window.
+func hide(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW, HideWindow: true}
+}

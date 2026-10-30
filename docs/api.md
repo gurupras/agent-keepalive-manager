@@ -88,13 +88,17 @@ The token is what keeps other local users and other programs out: the server bin
   "action": "apply",          // apply: this process can update itself
                               // command: show `command` (deb/rpm/arch/brew)
                               // download: open `latest.page` (no artifact for this platform)
+                              // restart: `installed` is on disk; apply restarts into it
   "command": "sudo apt update && sudo apt install --only-upgrade agent-keepalive",
+  "installed": "",            // with action restart: the newer version installed in place
   "error": "",
   "lastCheck": "…"
 }
 ```
 
 `apply` downloads the artifact for this install kind, checks its sha256 against the signed feed, replaces the installed program and restarts the server into it (for `macos-pkg` it opens the downloaded package in Installer instead). The UI shows the toast whenever `state` is `available` and the user has not dismissed that version, and "Updated to vX" once it reconnects to a newer `version`.
+
+When something else replaces the program while the server runs (a package manager upgrade, or an Installer), the server keeps running the old version. It checks its program file every minute; once the file has changed and stayed the same for a minute, it runs `<program> version`, and if that is newer than the running version it reports `state: "ready"`, `action: "restart"` and `installed`. It never restarts by itself: `apply` (the toast's **Restart**, or `agent-keepalive update apply`) restarts the server into the installed version, with the same arguments, and the store migrates at start as on any start. Feed checks wait until then. A server with updates off (`--no-update`, supervised) does not watch.
 
 ## WebSocket `api/ws`
 

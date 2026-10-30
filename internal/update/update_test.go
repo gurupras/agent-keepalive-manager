@@ -682,3 +682,103 @@ func TestWaitForPredecessor(t *testing.T) {
 		t.Fatal("timeout reported as free")
 	}
 }
+
+func TestUpdaterInstalledInPlace(t *testing.T) {
+	pub, priv := testKey(t)
+	srv := newFeedServer(t)
+	srv.publish(t, priv, "1.5.0", map[Artifact][]byte{
+		{Kind: KindDeb, OS: "linux", Arch: "amd64", Name: "agent-keepalive_1.5.0_amd64.deb"}: []byte("DEB"),
+	})
+	target := filepath.Join(t.TempDir(), "agent-keepalive")
+	os.WriteFile(target, []byte("OLD"), 0o755)
+	var probes sync.Map
+	restarted := make(chan string, 1)
+	u := New(Options{Version: "1.4.0", FeedURL: srv.URL + "/latest.json", PublicKey: pub,
+		Install: &Install{Kind: KindDeb, Exe: target, Target: target}, GOOS: "linux", GOARCH: "amd64", Log: quiet(),
+		Restart:    func(exe string) { restarted <- exe },
+		FirstCheck: time.Hour, WatchEvery: 10 * time.Millisecond,
+		exists: func(string) bool { return false },
+		probe: func(_ context.Context, path string) (string, error) {
+			b, _ := os.ReadFile(path)
+			n, _ := probes.LoadOrStore(string(b), new(int))
+			*n.(*int)++
+			return strings.TrimPrefix(string(b), "VERSION "), nil
+		},
+	})
+	if err := u.Check(context.Background()); err != nil || u.Status().Action != apitypes.ActionCommand {
+		t.Fatalf("check: %v %+v", err, u.Status())
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go u.Run(ctx)
+
+	waitFor := func(what string, ok func(apitypes.UpdateStatus) bool) apitypes.UpdateStatus {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !ok(u.Status()) {
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: %+v", what, u.Status())
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		return u.Status()
+	}
+	restartOffered := func(st apitypes.UpdateStatus) bool {
+		return st.State == apitypes.UpdateReady && st.Action == apitypes.ActionRestart
+	}
+
+	// The same version put back is not an update.
+	os.WriteFile(target, []byte("VERSION 1.4.0!"), 0o755)
+	waitFor("probe 1.4.0", func(apitypes.UpdateStatus) bool { _, ok := probes.Load("VERSION 1.4.0!"); return ok })
+	if st := u.Status(); st.State != apitypes.UpdateAvailable {
+		t.Fatalf("after reinstalling the running version: %+v", st)
+	}
+
+	os.WriteFile(target, []byte("VERSION 1.5.0"), 0o755)
+	st := waitFor("restart offer", restartOffered)
+	if st.Installed != "1.5.0" || st.Latest == nil || st.Latest.Notes == "" || st.Command != "" {
+		t.Fatalf("offer: %+v", st)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if n, _ := probes.Load("VERSION 1.5.0"); *n.(*int) != 1 {
+		t.Fatalf("probed %d times", *n.(*int))
+	}
+	// A feed check does not take the offer away.
+	if err := u.Check(context.Background()); err != nil || !restartOffered(u.Status()) {
+		t.Fatalf("check after install: %v %+v", err, u.Status())
+	}
+	if err := u.Apply(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case exe := <-restarted:
+		if exe != target {
+			t.Fatalf("restart %s", exe)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no restart")
+	}
+	if st := u.Status(); st.State != apitypes.UpdateInstalling {
+		t.Fatalf("after apply: %+v", st)
+	}
+}
+
+func TestProbeVersion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a shell script")
+	}
+	dir := t.TempDir()
+	script := func(name, out string) string {
+		p := filepath.Join(dir, name)
+		os.WriteFile(p, []byte("#!/bin/sh\n[ \"$1\" = version ] || exit 9\nprintf '"+out+"'\n"), 0o755)
+		return p
+	}
+	if v, err := probeVersion(context.Background(), script("ok", `agent-keepalive 1.5.0\nprofile: generic\ninstall: deb`)); err != nil || v != "1.5.0" {
+		t.Errorf("ok: %q %v", v, err)
+	}
+	for _, out := range []string{`something else 1.5.0`, `agent-keepalive dev`, ``} {
+		if v, err := probeVersion(context.Background(), script("bad", out)); err == nil {
+			t.Errorf("%q: got %q", out, v)
+		}
+	}
+}

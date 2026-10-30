@@ -52,6 +52,10 @@ const (
 	ActionApply    = "apply"    // this process can update itself (POST api/update/apply)
 	ActionCommand  = "command"  // show Command (a package manager updates it)
 	ActionDownload = "download" // open Latest.Page (no artifact for this platform)
+	// ActionRestart: a newer version (Installed) was put in place of the
+	// running program, for example by a package manager; POST
+	// api/update/apply restarts the server into it. State is "ready".
+	ActionRestart = "restart"
 )
 
 // Latest is the newest release the feed announced.
@@ -69,12 +73,13 @@ type UpdateStatus struct {
 	Enabled   bool      `json:"enabled"`
 	Current   string    `json:"current"`
 	Latest    *Latest   `json:"latest,omitempty"`
-	State     string    `json:"state"`              // one of the Update* constants
-	Progress  float64   `json:"progress"`           // 0..1 while downloading
-	Action    string    `json:"action,omitempty"`   // one of the Action* constants
-	Command   string    `json:"command,omitempty"`  // with ActionCommand
-	Error     string    `json:"error,omitempty"`    // with UpdateError
-	LastCheck time.Time `json:"lastCheck,omitzero"` // last completed feed check
+	State     string    `json:"state"`               // one of the Update* constants
+	Progress  float64   `json:"progress"`            // 0..1 while downloading
+	Action    string    `json:"action,omitempty"`    // one of the Action* constants
+	Command   string    `json:"command,omitempty"`   // with ActionCommand
+	Installed string    `json:"installed,omitempty"` // with ActionRestart: the version on disk
+	Error     string    `json:"error,omitempty"`     // with UpdateError
+	LastCheck time.Time `json:"lastCheck,omitzero"`  // last completed feed check
 }
 
 // Updater is the self-updater as the API uses it. Implemented by
@@ -86,8 +91,9 @@ type Updater interface {
 	// can report it).
 	Check(ctx context.Context) error
 	// Apply starts installing the available update and returns once it has
-	// started (ErrUnavailable when Action is not "apply" or nothing is
-	// available). Progress is reported through Subscribe. When the new
+	// started (ErrUnavailable when Action is not "apply" or "restart", or
+	// nothing is available). With "restart" it restarts the server into the
+	// installed version. Progress is reported through Subscribe. When the new
 	// program is in place the updater calls the RestartFunc it was built
 	// with.
 	Apply(ctx context.Context) error

@@ -17,11 +17,13 @@ const version = computed(() => u.value?.latest?.version ?? '')
 const page = computed(() => safeHref(u.value?.latest?.page ?? '') ?? safeHref(store.info?.downloadUrl ?? ''))
 const phase = computed(() => {
   if (store.updatePhase === 'restarting' || u.value?.state === 'installing') return 'restarting'
+  if (u.value?.action === 'restart' && u.value.state === 'ready' && store.updatePhase === 'idle') return 'installed'
   if (store.updatePhase === 'applying' || u.value?.state === 'downloading' || u.value?.state === 'ready') return 'progress'
   if (u.value?.state === 'error') return 'error'
   return 'offer'
 })
 const busy = computed(() => phase.value === 'progress' || phase.value === 'restarting')
+const restartLabel = computed(() => u.value?.action === 'restart' && phase.value === 'error' ? 'Try again' : 'Restart')
 
 function later () {
   if (version.value) dismissVersion(version.value)
@@ -45,9 +47,11 @@ function openPage () {
         <h2 :id="id + '-t'" class="text-[13px] font-semibold text-ink">
           <template v-if="phase === 'restarting'">Restarting agent-keepalive…</template>
           <template v-else-if="phase === 'progress'">Updating to {{ version }}…</template>
+          <template v-else-if="phase === 'installed'">agent-keepalive {{ version }} is installed</template>
           <template v-else>agent-keepalive {{ version }} is available</template>
         </h2>
         <p v-if="phase === 'offer'" class="mt-0.5 text-xs text-ink-2">You have {{ u.current }}.</p>
+        <p v-else-if="phase === 'installed'" class="mt-0.5 text-xs text-ink-2">{{ u.current }} is still running. Restart to use the new version; keep-alive plans carry over.</p>
         <p v-else-if="phase === 'restarting'" class="mt-0.5 text-xs text-ink-2">The page reconnects by itself when the new version is up.</p>
 
         <div v-if="phase === 'progress'" class="mt-2">
@@ -79,7 +83,10 @@ function openPage () {
         Release notes <AppIcon name="lucide:external-link" />
       </a>
       <button type="button" class="btn-ghost text-xs" @click="later">Later</button>
-      <button v-if="u.action === 'apply'" type="button" class="btn-primary text-xs" @click="applyUpdate">
+      <button v-if="u.action === 'restart'" type="button" class="btn-primary text-xs" @click="applyUpdate">
+        <AppIcon name="lucide:refresh-cw" /> {{ restartLabel }}
+      </button>
+      <button v-else-if="u.action === 'apply'" type="button" class="btn-primary text-xs" @click="applyUpdate">
         <AppIcon name="lucide:download" /> {{ phase === 'error' ? 'Try again' : 'Update' }}
       </button>
       <button v-else-if="u.action === 'command'" type="button" class="btn-primary text-xs" :aria-expanded="howOpen" @click="howOpen = !howOpen">
