@@ -66,6 +66,8 @@ export interface SessionView {
   model: string
   status: Status
   statusSince?: string
+  /** the harness's own word for the state (Claude Code: idle, busy, shell, waiting) */
+  harnessStatus?: string
   reach: Reach
   reachWhy?: string
   contextTokens: number

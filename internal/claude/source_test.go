@@ -141,7 +141,7 @@ func TestScan(t *testing.T) {
 
 func TestStatusMapping(t *testing.T) {
 	for in, want := range map[string]model.Status{
-		"": model.StatusIdle, "idle": model.StatusIdle, "busy": model.StatusWorking,
+		"": model.StatusIdle, "idle": model.StatusIdle, "shell": model.StatusIdle, "busy": model.StatusWorking,
 		"compacting": model.StatusWorking, "waiting": model.StatusWorking,
 	} {
 		eq(t, "status "+in, statusOf(in), want)

@@ -260,13 +260,15 @@ func globEscape(s string) string {
 	return r.Replace(s)
 }
 
-// statusOf maps the registry status. Only "idle" (and "", which a session
-// that never had a turn reports) is idle; every other state (busy,
-// compacting, waiting for a permission answer, ...) is treated as working,
-// so nothing is pinged into it.
+// statusOf maps the registry status. "idle", "" (a session that never had
+// a turn) and "shell" are idle; every other state (busy, waiting for a
+// permission answer, compacting, ...) is treated as working, so nothing is
+// pinged into it. "shell" is a turn that ended with background shell
+// commands still running: Claude Code shows it as working, but the model
+// makes no calls and the cache cools as at "idle".
 func statusOf(reg string) model.Status {
 	switch reg {
-	case "", "idle":
+	case "", "idle", "shell":
 		return model.StatusIdle
 	}
 	return model.StatusWorking
@@ -326,7 +328,7 @@ func (s *Source) session(e regEntry, procStart string, tr *tracked, loading bool
 	if at := msTime(e.StatusUpdatedAt); !at.IsZero() && status == statusOf(e.Status) {
 		since = at
 	}
-	ss.Status, ss.StatusSince = status, since
+	ss.Status, ss.StatusSince, ss.HarnessStatus = status, since, e.Status
 	return ss
 }
 

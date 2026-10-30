@@ -122,7 +122,11 @@ type Session struct {
 	// StatusSince is when Status last changed. A session "working" for far
 	// longer than any turn takes is reported as stale (see Blocked).
 	StatusSince time.Time `json:"statusSince,omitzero"`
-	Reach       Reach     `json:"reach"`
+	// HarnessStatus is the harness's own word for the state, when it has
+	// one (Claude Code: idle, busy, shell = background commands running
+	// after the turn ended, waiting = a permission prompt or question).
+	HarnessStatus string `json:"harnessStatus,omitempty"`
+	Reach         Reach  `json:"reach"`
 	// ReachWhy explains ReachNone.
 	ReachWhy string `json:"reachWhy,omitempty"`
 

@@ -26,6 +26,14 @@ const reach = computed(() => {
   if (s.reach === 'queue') return 'codex queue'
   return 'Cannot be pinged'
 })
+
+const statusText = computed(() => {
+  const s = r.value?.s
+  if (!s) return ''
+  if (s.harnessStatus === 'shell') return 'idle · background commands running'
+  if (s.harnessStatus === 'waiting') return 'waiting for an answer'
+  return s.status
+})
 const cap = computed(() => r.value ? planCap(r.value.s, store.settings) : undefined)
 const t = (v: string | undefined) => parseTime(v)
 
@@ -72,7 +80,7 @@ async function ping () {
         <h3 id="drawer-details" class="label mb-2">Session</h3>
         <dl class="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
           <div><dt class="text-ink-2">Model</dt><dd class="text-ink" :title="r.s.model">{{ shortModel(r.s.model) }}</dd></div>
-          <div><dt class="text-ink-2">Status</dt><dd class="text-ink">{{ r.stale ? 'working (stale)' : r.s.status }}<span v-if="t(r.s.statusSince)" class="text-ink-2"> · {{ relative(t(r.s.statusSince)!, now) }}</span></dd></div>
+          <div><dt class="text-ink-2">Status</dt><dd class="text-ink">{{ r.stale ? 'working (stale)' : statusText }}<span v-if="t(r.s.statusSince)" class="text-ink-2"> · {{ relative(t(r.s.statusSince)!, now) }}</span></dd></div>
           <div><dt class="text-ink-2">Context</dt><dd class="text-ink tabular-nums">{{ tokens(r.s.contextTokens) }} tokens</dd></div>
           <div><dt class="text-ink-2">You last typed</dt><dd class="text-ink">{{ r.humanAgoMs !== undefined ? span(r.humanAgoMs) + ' ago' : '—' }}</dd></div>
           <div><dt class="text-ink-2">Last API call</dt><dd class="text-ink">{{ t(r.s.lastCall) ? relative(t(r.s.lastCall)!, now) : '—' }}</dd></div>
