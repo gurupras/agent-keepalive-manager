@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // ErrLocked is returned by AcquireSchedulerLock when another server holds
@@ -149,4 +150,39 @@ func ReadHolder(ctx context.Context, lockDir string, dirs AgentDirs) (Holder, bo
 		return Holder{}, false
 	}
 	return h, true
+}
+
+// LockStart serialises starting a server for dataDir across processes: it
+// waits (polling, until ctx ends) for an exclusive lock on
+// <dataDir>/start.lock and returns its release. A caller checks for a
+// running server again once it holds the lock, so two programs that both
+// found none start one server between them. The OS drops the lock if the
+// holder dies; the started server does not inherit it (Go opens files
+// close-on-exec).
+func LockStart(ctx context.Context, dataDir string) (release func(), err error) {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dataDir, "start.lock"), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	t := time.NewTicker(50 * time.Millisecond)
+	defer t.Stop()
+	for {
+		err := tryLock(f)
+		if err == nil {
+			return func() { f.Close() }, nil
+		}
+		if !errors.Is(err, ErrLocked) {
+			f.Close()
+			return nil, fmt.Errorf("lock %s: %w", f.Name(), err)
+		}
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, fmt.Errorf("another program is starting the server for %s: %w", dataDir, ctx.Err())
+		case <-t.C:
+		}
+	}
 }

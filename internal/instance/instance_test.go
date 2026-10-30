@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestDefaultDataDir(t *testing.T) {
@@ -202,4 +203,37 @@ func TestSchedulerLock(t *testing.T) {
 		t.Fatalf("after release: %v", err)
 	}
 	l3.Release()
+}
+
+func TestLockStart(t *testing.T) {
+	dir := t.TempDir()
+	release, err := LockStart(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A second starter waits while the first holds the lock...
+	short, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	if _, err := LockStart(short, dir); err == nil {
+		t.Fatal("took the start lock while it was held")
+	}
+	// ...and gets it once the first lets go.
+	got := make(chan error, 1)
+	go func() {
+		r, err := LockStart(context.Background(), dir)
+		if err == nil {
+			r()
+		}
+		got <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	release()
+	select {
+	case err := <-got:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the waiting starter never got the lock")
+	}
 }

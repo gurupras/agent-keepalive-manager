@@ -72,6 +72,18 @@ func ensureServer(ctx context.Context, dir string, port int) (instance.Running, 
 	if r, ok := instance.FindRunning(ctx, dir); ok {
 		return r, nil
 	}
+	// Several agents' first calls can arrive together: one starts the
+	// server while the others wait here, then find it.
+	lctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	release, err := instance.LockStart(lctx, dir)
+	if err != nil {
+		return instance.Running{}, err
+	}
+	defer release()
+	if r, ok := instance.FindRunning(ctx, dir); ok {
+		return r, nil
+	}
 	return startBackground(ctx, dir, port)
 }
 
