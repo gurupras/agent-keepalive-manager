@@ -21,6 +21,8 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registers "pgx"
 	_ "modernc.org/sqlite"             // registers "sqlite"
+
+	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
 // Store keeps reports in SQLite or Postgres. Every statement is written once,
@@ -141,6 +143,28 @@ var migrations = []string{
 		install_id TEXT NOT NULL,
 		PRIMARY KEY (day, network, install_id)
 	);`,
+	// experiment_sums holds schema 2's experiments, one row per entry.
+	`CREATE TABLE experiment_sums (
+		install_id     TEXT NOT NULL,
+		day            TEXT NOT NULL,
+		experiment     TEXT NOT NULL,
+		arm            TEXT NOT NULL,
+		harness        TEXT NOT NULL,
+		model          TEXT NOT NULL,
+		episodes       BIGINT NOT NULL,
+		returned       BIGINT NOT NULL,
+		warm           BIGINT NOT NULL,
+		pings          BIGINT NOT NULL,
+		ping_calls     BIGINT NOT NULL,
+		ping_cost      DOUBLE PRECISION NOT NULL,
+		rewrite        DOUBLE PRECISION NOT NULL,
+		cost           DOUBLE PRECISION NOT NULL,
+		cost_sq        DOUBLE PRECISION NOT NULL,
+		context_tokens BIGINT NOT NULL,
+		quiet_minutes  BIGINT NOT NULL,
+		PRIMARY KEY (install_id, day, experiment, arm, harness, model)
+	);
+	CREATE INDEX experiment_sums_day ON experiment_sums (day);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -342,7 +366,7 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 		if err != nil {
 			return err
 		}
-		for _, table := range []string{"report_sessions", "outcomes"} {
+		for _, table := range []string{"report_sessions", "outcomes", "experiment_sums"} {
 			if _, err := tx.ExecContext(ctx, s.q(`DELETE FROM `+table+` WHERE install_id = ? AND day = ?`),
 				r.InstallID, r.Day); err != nil {
 				return err
@@ -364,6 +388,17 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 				return err
 			}
 		}
+		for _, e := range r.Experiments {
+			if _, err := tx.ExecContext(ctx, s.q(`INSERT INTO experiment_sums (
+				install_id, day, experiment, arm, harness, model, episodes, returned, warm, pings,
+				ping_calls, ping_cost, rewrite, cost, cost_sq, context_tokens, quiet_minutes)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+				r.InstallID, r.Day, e.Experiment, e.Arm, string(e.Harness), e.Model, e.Episodes, e.Returned, e.Warm,
+				e.Pings, e.PingCalls, e.PingCostUSD, e.RewriteUSD, e.CostUSD, e.CostSqUSD,
+				e.ContextTokens, e.QuietMinutes); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	return created, err
@@ -374,7 +409,7 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 func (s *Store) Purge(ctx context.Context, cutoff string) (int64, error) {
 	var n int64
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, table := range []string{"outcomes", "report_sessions"} {
+		for _, table := range []string{"outcomes", "report_sessions", "experiment_sums"} {
 			if _, err := tx.ExecContext(ctx, s.q(`DELETE FROM `+table+` WHERE day < ?`), cutoff); err != nil {
 				return err
 			}
@@ -674,4 +709,127 @@ func (s *Store) Breakdown(ctx context.Context, rg Range, by string) ([]Breakdown
 		out = out[:maxBreakdownRows]
 	}
 	return out, nil
+}
+
+// ExperimentArm is one arm of an experiment over a range of days. Costs are
+// per episode; lower is better.
+type ExperimentArm struct {
+	Arm       string `json:"arm"`
+	Installs  int64  `json:"installs"`
+	Episodes  int64  `json:"episodes"`
+	Returned  int64  `json:"returned"`
+	Warm      int64  `json:"warm"`
+	Pings     int64  `json:"pings"`
+	PingCalls int64  `json:"pingCalls"`
+	// MeanCostUSD is the mean episode cost and SECostUSD its standard error.
+	MeanCostUSD      float64 `json:"meanCostUsd"`
+	SECostUSD        float64 `json:"seCostUsd"`
+	WarmRate         float64 `json:"warmRate"` // Warm / Returned
+	PingsPerEpisode  float64 `json:"pingsPerEpisode"`
+	MeanQuietMinutes float64 `json:"meanQuietMinutes"`
+}
+
+// ExperimentDiff is the ping arm's mean episode cost minus the hold arm's,
+// with its 95% confidence interval. Significant when the interval excludes 0.
+type ExperimentDiff struct {
+	MeanCostUSD float64 `json:"meanCostUsd"`
+	CILowUSD    float64 `json:"ciLowUsd"`
+	CIHighUSD   float64 `json:"ciHighUsd"`
+	Significant bool    `json:"significant"`
+}
+
+// Experiment is one experiment's arms (hold first) and their difference,
+// nil while either arm has fewer than 2 episodes.
+type Experiment struct {
+	Experiment string          `json:"experiment"`
+	Arms       []ExperimentArm `json:"arms"`
+	Diff       *ExperimentDiff `json:"diff"`
+}
+
+// z95 is the normal quantile of a two-sided 95% interval.
+const z95 = 1.96
+
+// Experiments returns every experiment with episodes in rg, by id.
+func (s *Store) Experiments(ctx context.Context, rg Range) ([]Experiment, error) {
+	ef, args := rg.established("e.install_id")
+	rows, err := s.db.QueryContext(ctx, s.q(`SELECT e.experiment, e.arm, COUNT(DISTINCT e.install_id),
+		CAST(SUM(e.episodes) AS BIGINT), CAST(SUM(e.returned) AS BIGINT), CAST(SUM(e.warm) AS BIGINT),
+		CAST(SUM(e.pings) AS BIGINT), CAST(SUM(e.ping_calls) AS BIGINT),
+		SUM(e.cost), SUM(e.cost_sq), CAST(SUM(e.quiet_minutes) AS BIGINT)
+		FROM experiment_sums e WHERE e.day >= ? AND e.day <= ?`+ef+`
+		GROUP BY e.experiment, e.arm ORDER BY e.experiment, e.arm`), append([]any{rg.From, rg.To}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Experiment{}
+	for rows.Next() {
+		var (
+			id           string
+			a            ExperimentArm
+			cost, costSq float64
+			quiet        int64
+		)
+		if err := rows.Scan(&id, &a.Arm, &a.Installs, &a.Episodes, &a.Returned, &a.Warm, &a.Pings, &a.PingCalls,
+			&cost, &costSq, &quiet); err != nil {
+			return nil, err
+		}
+		a.MeanCostUSD, a.SECostUSD = meanSE(a.Episodes, cost, costSq)
+		if a.Returned > 0 {
+			a.WarmRate = float64(a.Warm) / float64(a.Returned)
+		}
+		if a.Episodes > 0 {
+			a.PingsPerEpisode = float64(a.Pings) / float64(a.Episodes)
+			a.MeanQuietMinutes = float64(quiet) / float64(a.Episodes)
+		}
+		if len(out) == 0 || out[len(out)-1].Experiment != id {
+			out = append(out, Experiment{Experiment: id})
+		}
+		e := &out[len(out)-1]
+		e.Arms = append(e.Arms, a) // "hold" sorts before "ping"
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		e := &out[i]
+		if len(e.Arms) == 2 && e.Arms[0].Arm == model.ArmHold && e.Arms[1].Arm == model.ArmPing {
+			e.Diff = experimentDiff(e.Arms[0], e.Arms[1])
+		}
+	}
+	return out, nil
+}
+
+// meanSE is the mean of n episode costs and its standard error, from their
+// sum and sum of squares. The sample variance is clamped at 0 against
+// rounding; with fewer than 2 episodes the error is 0.
+func meanSE(n int64, sum, sumSq float64) (mean, se float64) {
+	if n < 1 {
+		return 0, 0
+	}
+	mean = sum / float64(n)
+	if n < 2 {
+		return mean, 0
+	}
+	variance := max((sumSq-sum*sum/float64(n))/float64(n-1), 0)
+	return mean, math.Sqrt(variance / float64(n))
+}
+
+// experimentDiff compares the arms' mean episode costs with Welch's
+// interval, ping minus hold, or returns nil when either arm has fewer than
+// 2 episodes. Episodes are treated as independent, though those of one
+// install are correlated (its sessions, models and habits): the interval is
+// narrower than it should be when a few installs supply most episodes.
+func experimentDiff(hold, ping ExperimentArm) *ExperimentDiff {
+	if hold.Episodes < 2 || ping.Episodes < 2 {
+		return nil
+	}
+	d := ping.MeanCostUSD - hold.MeanCostUSD
+	half := z95 * math.Sqrt(hold.SECostUSD*hold.SECostUSD+ping.SECostUSD*ping.SECostUSD)
+	return &ExperimentDiff{
+		MeanCostUSD: d,
+		CILowUSD:    d - half,
+		CIHighUSD:   d + half,
+		Significant: d-half > 0 || d+half < 0,
+	}
 }

@@ -27,7 +27,7 @@ func forEachStore(t *testing.T, fn func(t *testing.T, s *Store)) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, tbl := range []string{"outcomes", "report_sessions", "reports", "hub_kv", "new_installs", "schema_migrations"} {
+		for _, tbl := range []string{"experiment_sums", "outcomes", "report_sessions", "reports", "hub_kv", "new_installs", "schema_migrations"} {
 			if _, err := db.Exec(`DROP TABLE IF EXISTS ` + tbl); err != nil {
 				t.Fatal(err)
 			}
@@ -457,6 +457,179 @@ func TestEstablished(t *testing.T) {
 			}
 		}
 	})
+}
+
+// expSum is one experiment entry whose episodes cost costs each, all paid
+// as re-writes in the hold arm and split evenly with pings in the ping arm.
+func expSum(experiment, arm string, costs ...float64) model.ExperimentSum {
+	e := model.ExperimentSum{Experiment: experiment, Arm: arm, Harness: "claude", Model: "opus",
+		Episodes: len(costs), Returned: len(costs), Warm: 1, ContextTokens: 1_000_000, QuietMinutes: 30 * int64(len(costs))}
+	for _, c := range costs {
+		e.CostUSD += c
+		e.CostSqUSD += c * c
+	}
+	e.RewriteUSD = e.CostUSD
+	if arm == model.ArmPing {
+		e.Pings, e.PingCalls = 2*len(costs), 2*len(costs)
+		e.PingCostUSD, e.RewriteUSD = e.CostUSD/2, e.CostUSD/2
+	}
+	return e
+}
+
+func mkReport2(install, day string, e ...model.ExperimentSum) *Report {
+	r := mkReport(install, day)
+	r.Schema = 2
+	r.Experiments = append([]model.ExperimentSum{}, e...)
+	return r
+}
+
+func TestUpsertReplacesExperiments(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		r := mkReport2(idA, "2026-10-20", expSum("x-1", "hold", 1, 2), expSum("x-1", "ping", 1), expSum("x-2", "hold", 3))
+		if err := r.Validate(testNow); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Upsert(ctx, r, testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		count := func() int {
+			var n int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM experiment_sums`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			return n
+		}
+		if n := count(); n != 3 {
+			t.Fatalf("rows %d", n)
+		}
+		if _, err := s.Upsert(ctx, mkReport2(idA, "2026-10-20", expSum("x-1", "ping", 4, 4)), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(); n != 1 {
+			t.Fatalf("rows after replace %d", n)
+		}
+		exps, err := s.Experiments(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(exps) != 1 || exps[0].Experiment != "x-1" || len(exps[0].Arms) != 1 ||
+			exps[0].Arms[0].Episodes != 2 || !near(exps[0].Arms[0].MeanCostUSD, 4) || exps[0].Diff != nil {
+			t.Fatalf("after replace: %+v", exps)
+		}
+		// A schema 1 report for the day clears its experiments too.
+		if _, err := s.Upsert(ctx, mkReport(idA, "2026-10-20"), testNow, Admission{}); err != nil {
+			t.Fatal(err)
+		}
+		if n := count(); n != 0 {
+			t.Fatalf("rows after schema 1 %d", n)
+		}
+	})
+}
+
+func TestExperiments(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		// Hold episodes cost 0.5, 2.5, 3, 4 and ping ones 0.5, 0.5, 1, 1,
+		// over two installs and days. Hold: mean 2.5, var (31.5 - 100/4)/3
+		// = 6.5/3, se² = 6.5/12. Ping: mean 0.75, var (2.5 - 9/4)/3 = 1/12,
+		// se² = 1/48. diff = -1.75 ± 1.96·√(27/48) = -1.75 ± 1.47.
+		for _, r := range []*Report{
+			mkReport2(idA, "2026-10-20", expSum("busy-1", "hold", 0.5, 2.5), expSum("busy-1", "ping", 0.5, 0.5),
+				expSum("lone-1", "hold", 1, 1), expSum("lone-1", "ping", 2)),
+			mkReport2(idB, "2026-10-21", expSum("busy-1", "hold", 3, 4), expSum("busy-1", "ping", 1, 1)),
+			mkReport(idC, "2026-10-21"),
+		} {
+			if err := r.Validate(testNow); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Upsert(ctx, r, testNow, Admission{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		exps, err := s.Experiments(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(exps) != 2 || exps[0].Experiment != "busy-1" || exps[1].Experiment != "lone-1" {
+			t.Fatalf("experiments: %+v", exps)
+		}
+		e := exps[0]
+		if len(e.Arms) != 2 {
+			t.Fatalf("arms: %+v", e.Arms)
+		}
+		hold, ping := e.Arms[0], e.Arms[1]
+		if hold.Arm != "hold" || hold.Installs != 2 || hold.Episodes != 4 || hold.Returned != 4 || hold.Warm != 2 ||
+			hold.Pings != 0 || !near(hold.MeanCostUSD, 2.5) || !near(hold.SECostUSD, math.Sqrt(6.5/12)) ||
+			!near(hold.WarmRate, 0.5) || !near(hold.MeanQuietMinutes, 30) {
+			t.Fatalf("hold: %+v", hold)
+		}
+		if ping.Arm != "ping" || ping.Installs != 2 || ping.Episodes != 4 || ping.Pings != 8 || ping.PingCalls != 8 ||
+			!near(ping.MeanCostUSD, 0.75) || !near(ping.SECostUSD, math.Sqrt(1.0/48)) || !near(ping.PingsPerEpisode, 2) {
+			t.Fatalf("ping: %+v", ping)
+		}
+		half := 1.96 * math.Sqrt(27.0/48)
+		if d := e.Diff; d == nil || !near(d.MeanCostUSD, -1.75) || !near(d.CILowUSD, -1.75-half) ||
+			!near(d.CIHighUSD, -1.75+half) || !d.Significant {
+			t.Fatalf("diff: %+v", e.Diff)
+		}
+		// lone-1's ping arm has one episode: no difference yet.
+		if exps[1].Diff != nil || len(exps[1].Arms) != 2 || exps[1].Arms[1].SECostUSD != 0 {
+			t.Fatalf("lone-1: %+v", exps[1])
+		}
+
+		// Only idA's day: two episodes an arm, too spread to tell apart.
+		exps, err = s.Experiments(ctx, Range{From: "2026-10-20", To: "2026-10-20"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Hold 0.5, 2.5: mean 1.5, var 2, se 1. Ping 0.5, 0.5: mean 0.5,
+		// se 0. diff = -1 ± 1.96, which spans 0.
+		if d := exps[0].Diff; d == nil || !near(d.MeanCostUSD, -1) || !near(d.CIHighUSD, 0.96) || d.Significant {
+			t.Fatalf("one day: %+v", exps[0].Diff)
+		}
+
+		// Established installs only: idA and idB have one report each.
+		exps, err = s.Experiments(ctx, Range{From: "2026-10-01", To: "2026-10-27", MinDays: 2})
+		if err != nil || len(exps) != 0 {
+			t.Fatalf("established: %+v %v", exps, err)
+		}
+		exps, err = s.Experiments(ctx, Range{From: "2025-01-01", To: "2025-01-31"})
+		if err != nil || exps == nil || len(exps) != 0 {
+			t.Fatalf("empty range: %#v %v", exps, err)
+		}
+
+		// Purge takes the experiment rows with their reports.
+		if _, err := s.Purge(ctx, "2026-10-21"); err != nil {
+			t.Fatal(err)
+		}
+		var left int
+		if err := s.db.QueryRow(s.q(`SELECT COUNT(*) FROM experiment_sums WHERE day < ?`), "2026-10-21").Scan(&left); err != nil || left != 0 {
+			t.Fatalf("experiment rows left %d err %v", left, err)
+		}
+	})
+}
+
+func TestMeanSE(t *testing.T) {
+	for _, tc := range []struct {
+		n             int64
+		sum, sq       float64
+		wantM, wantSE float64
+	}{
+		{0, 0, 0, 0, 0},
+		{1, 3, 9, 3, 0},
+		{4, 10, 30, 2.5, math.Sqrt(5.0 / 12)},
+		// Rounding can put sq just under sum²/n: clamped, not NaN.
+		{2, 2, 1.9999999, 1, 0},
+	} {
+		m, se := meanSE(tc.n, tc.sum, tc.sq)
+		if !near(m, tc.wantM) || !near(se, tc.wantSE) {
+			t.Errorf("meanSE(%d, %v, %v) = %v, %v", tc.n, tc.sum, tc.sq, m, se)
+		}
+	}
+	if experimentDiff(ExperimentArm{Episodes: 1}, ExperimentArm{Episodes: 100}) != nil {
+		t.Error("diff with one hold episode")
+	}
 }
 
 func TestRobust(t *testing.T) {

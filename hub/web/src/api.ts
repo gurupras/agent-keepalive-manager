@@ -36,6 +36,40 @@ export interface BreakdownRow {
   pings: number
 }
 
+/** One arm of an experiment. Costs are per episode; lower is better. */
+export interface ExperimentArm {
+  arm: 'hold' | 'ping'
+  installs: number
+  episodes: number
+  returned: number
+  warm: number
+  pings: number
+  pingCalls: number
+  meanCostUsd: number
+  /** Standard error of meanCostUsd. */
+  seCostUsd: number
+  /** warm / returned. */
+  warmRate: number
+  pingsPerEpisode: number
+  meanQuietMinutes: number
+}
+
+/** ping's mean episode cost minus hold's, with its 95% interval. */
+export interface ExperimentDiff {
+  meanCostUsd: number
+  ciLowUsd: number
+  ciHighUsd: number
+  significant: boolean
+}
+
+export interface Experiment {
+  experiment: string
+  /** hold first, then ping; an arm without episodes is absent. */
+  arms: ExperimentArm[]
+  /** null while either arm has fewer than 2 episodes. */
+  diff: ExperimentDiff | null
+}
+
 export type Metric = 'net' | 'saved' | 'wasted' | 'installs' | 'pings'
 export type Dimension = 'model' | 'harness' | 'version' | 'os' | 'installKind' | 'profile'
 
@@ -86,6 +120,11 @@ export function series (r: DayRange, installs: Installs, metric: Metric, signal?
 
 export function breakdown (r: DayRange, installs: Installs, by: Dimension, signal?: AbortSignal): Promise<BreakdownRow[]> {
   return get('v1/breakdown', { from: r.from, to: r.to, installs, by }, signal)
+}
+
+export async function experiments (r: DayRange, installs: Installs, signal?: AbortSignal): Promise<Experiment[]> {
+  const body = await get<{ experiments: Experiment[] }>('v1/experiments', { from: r.from, to: r.to, installs }, signal)
+  return body.experiments
 }
 
 export interface Session {

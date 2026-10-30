@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -38,6 +39,31 @@ func validReport() map[string]any {
 
 func outcome0(r map[string]any) map[string]any { return r["outcomes"].([]any)[0].(map[string]any) }
 
+// validReport2 is the schema 2 example from docs/metrics.md: validReport
+// plus experiments, a ping arm first and a hold arm second.
+func validReport2() map[string]any {
+	r := validReport()
+	r["schema"] = 2
+	r["experiments"] = []any{
+		map[string]any{
+			"experiment": "busy-ping-subagents-1", "arm": "ping", "harness": "claude", "model": "claude-opus-4-1",
+			"episodes": 3, "returned": 3, "warm": 2, "pings": 5, "pingCalls": 5,
+			"pingCostUsd": 0.35, "rewriteUsd": 1.20, "costUsd": 1.55, "costSqUsd": 1.61,
+			"contextTokens": 540000, "quietMinutes": 96,
+		},
+		map[string]any{
+			"experiment": "busy-ping-subagents-1", "arm": "hold", "harness": "claude", "model": "claude-opus-4-1",
+			"episodes": 2, "returned": 2, "warm": 0, "pings": 0, "pingCalls": 0,
+			"pingCostUsd": 0, "rewriteUsd": 2.10, "costUsd": 2.10, "costSqUsd": 2.25,
+			"contextTokens": 380000, "quietMinutes": 140,
+		},
+	}
+	return r
+}
+
+func exp0(r map[string]any) map[string]any { return r["experiments"].([]any)[0].(map[string]any) }
+func exp1(r map[string]any) map[string]any { return r["experiments"].([]any)[1].(map[string]any) }
+
 func encode(t *testing.T, v any) []byte {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -55,6 +81,141 @@ func TestDecodeReportValid(t *testing.T) {
 	if r.InstallID != testInstall || r.Day != "2026-10-26" || r.Pings.Sent != 17 ||
 		len(r.Outcomes) != 1 || r.Outcomes[0].NetUSD != 7.39 || r.Sessions["claude"] != 4 {
 		t.Fatalf("decoded %+v", r)
+	}
+}
+
+func TestDecodeReportSchema2(t *testing.T) {
+	r, err := DecodeReport(encode(t, validReport2()), testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Schema != 2 || len(r.Experiments) != 2 || r.Experiments[0].Arm != "ping" ||
+		r.Experiments[0].CostSqUSD != 1.61 || r.Experiments[1].QuietMinutes != 140 || r.Outcomes[0].NetUSD != 7.39 {
+		t.Fatalf("decoded %+v", r)
+	}
+	// A schema 1 report decodes with no experiments.
+	r, err = DecodeReport(encode(t, validReport()), testNow)
+	if err != nil || r.Experiments != nil {
+		t.Fatalf("schema 1: %v %+v", err, r)
+	}
+}
+
+// TestDecodeReportExperimentRules changes one thing in validReport2 per
+// case; a refusal must name the field.
+func TestDecodeReportExperimentRules(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+		field  string // in the refusal
+		ok     bool
+	}{
+		// schema
+		{name: "schema 1 with experiments", mutate: func(r map[string]any) { r["schema"] = 1 }, field: "experiments"},
+		{name: "schema 1 with empty experiments", mutate: func(r map[string]any) { r["schema"] = 1; r["experiments"] = []any{} }, field: "experiments"},
+		{name: "schema 2 without experiments", mutate: func(r map[string]any) { delete(r, "experiments") }, field: "experiments"},
+		{name: "schema 2 with null experiments", mutate: func(r map[string]any) { r["experiments"] = nil }, field: "experiments"},
+		{name: "schema 2 with empty experiments", mutate: func(r map[string]any) { r["experiments"] = []any{} }, ok: true},
+		{name: "schema 3", mutate: func(r map[string]any) { r["schema"] = 3 }, field: "schema"},
+		// structure and strings
+		{name: "unknown field", mutate: func(r map[string]any) { exp0(r)["session"] = "x" }, field: "session"},
+		{name: "experiment missing", mutate: func(r map[string]any) { delete(exp0(r), "experiment") }, field: "experiments[0].experiment"},
+		{name: "experiment bad", mutate: func(r map[string]any) { exp0(r)["experiment"] = "busy ping" }, field: "experiments[0].experiment"},
+		{name: "experiment long", mutate: func(r map[string]any) { exp0(r)["experiment"] = strings.Repeat("e", 65) }, field: "experiments[0].experiment"},
+		{name: "arm missing", mutate: func(r map[string]any) { delete(exp0(r), "arm") }, field: "experiments[0].arm"},
+		{name: "arm unknown", mutate: func(r map[string]any) { exp0(r)["arm"] = "control" }, field: "experiments[0].arm"},
+		{name: "harness missing", mutate: func(r map[string]any) { delete(exp0(r), "harness") }, field: "experiments[0].harness"},
+		{name: "harness bad", mutate: func(r map[string]any) { exp0(r)["harness"] = "a b" }, field: "experiments[0].harness"},
+		{name: "model empty", mutate: func(r map[string]any) { exp0(r)["model"] = "" }, ok: true},
+		{name: "model bad", mutate: func(r map[string]any) { exp0(r)["model"] = "<b>" }, field: "experiments[0].model"},
+		{name: "duplicate key", mutate: func(r map[string]any) { exp1(r)["arm"] = "ping" }, field: "experiments[1]: same"},
+		{name: "same key other model", mutate: func(r map[string]any) {
+			e := exp1(r)
+			for k, v := range exp0(r) {
+				e[k] = v
+			}
+			e["model"] = "claude-sonnet-4-5"
+		}, ok: true},
+		// counts and amounts
+		{name: "episodes negative", mutate: func(r map[string]any) { exp0(r)["episodes"] = -1 }, field: "experiments[0].episodes"},
+		{name: "pings negative", mutate: func(r map[string]any) { exp0(r)["pings"] = -1 }, field: "experiments[0].pings"},
+		{name: "quietMinutes negative", mutate: func(r map[string]any) { exp0(r)["quietMinutes"] = -1 }, field: "experiments[0].quietMinutes"},
+		{name: "contextTokens too large", mutate: func(r map[string]any) { exp0(r)["contextTokens"] = 2e12 }, field: "experiments[0].contextTokens"},
+		{name: "rewriteUsd negative", mutate: func(r map[string]any) { exp0(r)["rewriteUsd"] = -0.5 }, field: "experiments[0].rewriteUsd"},
+		{name: "costSqUsd negative", mutate: func(r map[string]any) { exp0(r)["costSqUsd"] = -1 }, field: "experiments[0].costSqUsd"},
+		{name: "costUsd too large", mutate: func(r map[string]any) { exp0(r)["costUsd"] = 1e10 }, field: "experiments[0].costUsd"},
+		{name: "too many entries", mutate: func(r map[string]any) {
+			list := make([]any, 1001)
+			for i := range list {
+				e := map[string]any{}
+				for k, v := range exp0(r) {
+					e[k] = v
+				}
+				e["experiment"] = fmt.Sprintf("x-%d", i)
+				list[i] = e
+			}
+			r["experiments"] = list
+		}, field: "experiments: more than 1000"},
+		// plausibility
+		{name: "episodes zero", mutate: func(r map[string]any) { exp1(r)["episodes"] = 0 }, field: "experiments[1].episodes"},
+		{name: "returned over episodes", mutate: func(r map[string]any) { exp0(r)["returned"] = 4 }, field: "experiments[0].returned"},
+		{name: "warm over returned", mutate: func(r map[string]any) { exp0(r)["returned"], exp0(r)["warm"] = 1, 2 }, field: "experiments[0].warm"},
+		{name: "none returned", mutate: func(r map[string]any) { exp0(r)["returned"], exp0(r)["warm"] = 0, 0 }, ok: true},
+		{name: "hold with pings", mutate: func(r map[string]any) { exp1(r)["pings"] = 1 }, field: "experiments[1].pings"},
+		{name: "hold with ping cost", mutate: func(r map[string]any) {
+			e := exp1(r)
+			e["pingCostUsd"], e["rewriteUsd"] = 0.1, 2.0
+		}, field: "experiments[1].pings"},
+		{name: "hold with ping calls", mutate: func(r map[string]any) { exp1(r)["pingCalls"] = 1 }, field: "experiments[1].pingCalls"},
+		{name: "ping unanswered", mutate: func(r map[string]any) { exp0(r)["pingCalls"] = 0 }, ok: true},
+		{name: "ping calls at cap", mutate: func(r map[string]any) { exp0(r)["pingCalls"] = 250 }, ok: true},
+		{name: "ping calls over cap", mutate: func(r map[string]any) { exp0(r)["pingCalls"] = 251 }, field: "experiments[0].pingCalls"},
+		{name: "context over cap", mutate: func(r map[string]any) { exp0(r)["contextTokens"] = 30_000_001 }, field: "experiments[0].contextTokens"},
+		{name: "quiet minutes at cap", mutate: func(r map[string]any) { exp1(r)["quietMinutes"] = 2 * 168 * 60 }, ok: true},
+		{name: "quiet minutes over cap", mutate: func(r map[string]any) { exp1(r)["quietMinutes"] = 2*168*60 + 1 }, field: "experiments[1].quietMinutes"},
+		{name: "ping cost over cap", mutate: func(r map[string]any) {
+			e := exp0(r)
+			e["pingCostUsd"], e["costUsd"], e["costSqUsd"] = 126.0, 127.2, 10000.0
+		}, field: "experiments[0].pingCostUsd"},
+		{name: "rewrite over context", mutate: func(r map[string]any) {
+			e := exp0(r)
+			e["contextTokens"], e["costSqUsd"] = 10000, 1.61
+		}, field: "experiments[0].rewriteUsd"},
+		{name: "cost mismatch", mutate: func(r map[string]any) { exp0(r)["costUsd"] = 1.6 }, field: "experiments[0].costUsd"},
+		{name: "cost rounding", mutate: func(r map[string]any) { exp0(r)["costUsd"] = 1.555 }, ok: true},
+		{name: "costSq at lower bound", mutate: func(r map[string]any) { exp1(r)["costSqUsd"] = 2.205 }, ok: true},
+		{name: "costSq below lower bound", mutate: func(r map[string]any) { exp1(r)["costSqUsd"] = 2.19 }, field: "experiments[1].costSqUsd"},
+		{name: "costSq at upper bound", mutate: func(r map[string]any) { exp1(r)["costSqUsd"] = 4.41 }, ok: true},
+		{name: "costSq above upper bound", mutate: func(r map[string]any) { exp1(r)["costSqUsd"] = 4.43 }, field: "experiments[1].costSqUsd"},
+		{name: "costSq large relative rounding", mutate: func(r map[string]any) {
+			// One episode of $500: costSq is 250000 give or take rounding.
+			e := exp1(r)
+			e["episodes"], e["returned"], e["contextTokens"] = 1, 1, 9_000_000
+			e["rewriteUsd"], e["costUsd"], e["costSqUsd"] = 500.0, 500.0, 250000.2
+		}, ok: true},
+		{name: "zero cost", mutate: func(r map[string]any) {
+			e := exp1(r)
+			e["rewriteUsd"], e["costUsd"], e["costSqUsd"] = 0, 0, 0
+		}, ok: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := validReport2()
+			tc.mutate(r)
+			_, err := DecodeReport(encode(t, r), testNow)
+			if tc.ok {
+				if err != nil {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("accepted (err %v)", err)
+			}
+			if !strings.Contains(err.Error(), tc.field) {
+				t.Fatalf("refusal %q does not name %q", err, tc.field)
+			}
+		})
 	}
 }
 
@@ -79,7 +240,9 @@ func TestDecodeReportRules(t *testing.T) {
 		{name: "huge number", raw: strings.Replace(string(mustJSON(validReport())), `"hours":21.5`, `"hours":1e400`, 1)},
 		// schema
 		{name: "schema missing", mutate: func(r map[string]any) { delete(r, "schema") }},
-		{name: "schema 2", mutate: func(r map[string]any) { r["schema"] = 2 }},
+		{name: "schema 0", mutate: func(r map[string]any) { r["schema"] = 0 }},
+		{name: "schema 2 without experiments", mutate: func(r map[string]any) { r["schema"] = 2 }},
+		{name: "schema 3", mutate: func(r map[string]any) { r["schema"] = 3 }},
 		// installId
 		{name: "installId missing", mutate: func(r map[string]any) { delete(r, "installId") }},
 		{name: "installId not uuid", mutate: func(r map[string]any) { r["installId"] = "my-laptop" }},

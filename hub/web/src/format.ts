@@ -3,6 +3,7 @@ const usdCompact = new Intl.NumberFormat('en-US', { style: 'currency', currency:
 const int = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 })
 const pct = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 })
+const dec = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 })
 
 export function money (v: number): string {
   return Math.abs(v) >= 100_000 ? usdCompact.format(v) : usd.format(v)
@@ -14,6 +15,11 @@ export function count (v: number): string {
 
 export function percent (v: number): string {
   return pct.format(v)
+}
+
+/** decimal formats a small ratio, such as pings per episode. */
+export function decimal (v: number): string {
+  return dec.format(v)
 }
 
 /** axis formats a chart tick: short, and money with a $. */

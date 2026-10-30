@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET "+b+"/v1/summary", s.dashboardAPI(s.handleSummary))
 		mux.HandleFunc("GET "+b+"/v1/series", s.dashboardAPI(s.handleSeries))
 		mux.HandleFunc("GET "+b+"/v1/breakdown", s.dashboardAPI(s.handleBreakdown))
+		mux.HandleFunc("GET "+b+"/v1/experiments", s.dashboardAPI(s.handleExperiments))
 		mux.HandleFunc("POST "+b+"/v1/login", s.handleLogin)
 		mux.HandleFunc("POST "+b+"/v1/logout", s.handleLogout)
 		mux.HandleFunc("GET "+b+"/v1/session", s.handleSession)
@@ -518,6 +519,21 @@ func (s *Server) handleBreakdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, rows)
+}
+
+func (s *Server) handleExperiments(w http.ResponseWriter, r *http.Request) {
+	rg, err := s.parseRange(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	exps, err := s.store.Experiments(r.Context(), rg)
+	if err != nil {
+		s.log.Error("experiments", "err", err)
+		writeError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"experiments": exps})
 }
 
 // handleUI serves the dashboard's files. Hashed assets are cached for good;

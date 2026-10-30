@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import * as api from './api.ts'
-import type { BreakdownRow, Dimension, Installs, Metric, Point, Summary } from './api.ts'
+import type { BreakdownRow, Dimension, Experiment, Installs, Metric, Point, Summary } from './api.ts'
 import { count, money, percent, shortDay } from './format.ts'
 import { useRange } from './range.ts'
 import { cycleTheme, theme } from './theme.ts'
 import BreakdownTable from './components/BreakdownTable.vue'
+import ExperimentCard from './components/ExperimentCard.vue'
 import KpiTile from './components/KpiTile.vue'
 import RangePicker from './components/RangePicker.vue'
 import SeriesChart from './components/SeriesChart.vue'
@@ -36,6 +37,7 @@ const installs = ref<Installs>('established')
 const summary = ref<Summary | null>(null)
 const points = ref<Point[] | null>(null)
 const tables = ref<Record<Dimension, BreakdownRow[] | null>>(emptyTables())
+const experiments = ref<Experiment[] | null>(null)
 const error = ref('')
 const needToken = ref(false)
 const signedIn = ref(false)
@@ -72,6 +74,7 @@ function loadAll () {
   error.value = ''
   summary.value = null
   tables.value = emptyTables()
+  experiments.value = null
   api.summary(range.value, installs.value, signal).then(s => {
     if (signal.aborted) return
     summary.value = s
@@ -83,6 +86,9 @@ function loadAll () {
       if (!signal.aborted) tables.value[d.key] = rows
     }, e => failed(e, signal))
   }
+  api.experiments(range.value, installs.value, signal).then(list => {
+    if (!signal.aborted) experiments.value = list
+  }, e => failed(e, signal))
 }
 
 watch([range, installs], loadAll, { immediate: true })
@@ -242,6 +248,23 @@ const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: lig
 
       <section class="grid gap-4 lg:grid-cols-2" aria-label="Breakdowns">
         <BreakdownTable v-for="d in DIMENSIONS" :key="d.key" :title="d.label" :rows="tables[d.key]" />
+      </section>
+
+      <section class="space-y-3" aria-labelledby="experiments-title">
+        <div>
+          <h2 id="experiments-title" class="text-sm font-semibold text-text-0">Experiments</h2>
+          <p class="text-xs text-text-3">
+            Pinging a busy session that makes no API calls, against holding. An episode is one quiet stretch; its cost is
+            the pings sent plus the cache re-write when the session came back. Lower is better.
+          </p>
+        </div>
+        <p v-if="experiments === null" class="text-sm text-text-3">Loading…</p>
+        <p v-else-if="experiments.length === 0" class="rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm text-text-3 shadow-card">
+          No experiment episodes in this range.
+        </p>
+        <div v-else class="grid gap-4 lg:grid-cols-2">
+          <ExperimentCard v-for="e in experiments" :key="e.experiment" :experiment="e" />
+        </div>
       </section>
     </main>
   </div>

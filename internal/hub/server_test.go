@@ -157,7 +157,7 @@ func TestRateLimitTrustProxy(t *testing.T) {
 }
 
 func TestDashboardModes(t *testing.T) {
-	read := []string{"/v1/summary", "/v1/series?metric=pings", "/v1/breakdown?by=os"}
+	read := []string{"/v1/summary", "/v1/series?metric=pings", "/v1/breakdown?by=os", "/v1/experiments"}
 
 	t.Run("public", func(t *testing.T) {
 		_, h := newTestServer(t, Config{})
@@ -379,6 +379,78 @@ func TestQueryAPI(t *testing.T) {
 		"/v1/breakdown",
 		"/v1/summary?installs=some",
 	} {
+		if w := do(h, "GET", p, nil); w.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d", p, w.Code)
+		}
+	}
+}
+
+func TestExperimentsAPI(t *testing.T) {
+	_, h := newTestServer(t, Config{})
+	w := do(h, "GET", "/v1/experiments?from=2026-10-01&to=2026-10-27", nil)
+	if w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != `{"experiments":[]}` {
+		t.Fatalf("empty: %d %s", w.Code, w.Body)
+	}
+	// Schema 1 and schema 2 reports are both stored.
+	if w := do(h, "POST", "/v1/reports", mustJSON(validReport())); w.Code != http.StatusAccepted {
+		t.Fatalf("schema 1: %d %s", w.Code, w.Body)
+	}
+	r2 := validReport2()
+	r2["day"] = "2026-10-25"
+	if w := do(h, "POST", "/v1/reports", mustJSON(r2)); w.Code != http.StatusAccepted {
+		t.Fatalf("schema 2: %d %s", w.Code, w.Body)
+	}
+	bad := validReport2()
+	exp0(bad)["costUsd"] = 9.0
+	if w := do(h, "POST", "/v1/reports", mustJSON(bad)); w.Code != http.StatusBadRequest ||
+		!strings.Contains(w.Body.String(), "experiments[0].costUsd") {
+		t.Fatalf("bad experiment: %d %s", w.Code, w.Body)
+	}
+
+	w = do(h, "GET", "/v1/experiments?from=2026-10-01&to=2026-10-27", nil)
+	var body struct {
+		Experiments []Experiment `json:"experiments"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil || len(body.Experiments) != 1 {
+		t.Fatalf("experiments: %s", w.Body)
+	}
+	e := body.Experiments[0]
+	if e.Experiment != "busy-ping-subagents-1" || len(e.Arms) != 2 || e.Arms[0].Arm != "hold" || e.Arms[1].Arm != "ping" ||
+		e.Arms[1].Episodes != 3 || !near(e.Arms[1].WarmRate, 2.0/3) || !near(e.Arms[0].MeanCostUSD, 1.05) || e.Diff == nil {
+		t.Fatalf("experiment: %+v", e)
+	}
+	// The JSON keys are the documented ones.
+	var raw struct {
+		Experiments []map[string]json.RawMessage `json:"experiments"`
+	}
+	json.Unmarshal(w.Body.Bytes(), &raw)
+	for _, k := range []string{"experiment", "arms", "diff"} {
+		if _, ok := raw.Experiments[0][k]; !ok {
+			t.Errorf("experiment lacks %s", k)
+		}
+	}
+	var arms []map[string]any
+	json.Unmarshal(raw.Experiments[0]["arms"], &arms)
+	for _, k := range []string{"arm", "installs", "episodes", "returned", "warm", "pings", "pingCalls",
+		"meanCostUsd", "seCostUsd", "warmRate", "pingsPerEpisode", "meanQuietMinutes"} {
+		if _, ok := arms[0][k]; !ok {
+			t.Errorf("arm lacks %s", k)
+		}
+	}
+	var diff map[string]any
+	json.Unmarshal(raw.Experiments[0]["diff"], &diff)
+	for _, k := range []string{"meanCostUsd", "ciLowUsd", "ciHighUsd", "significant"} {
+		if _, ok := diff[k]; !ok {
+			t.Errorf("diff lacks %s", k)
+		}
+	}
+
+	// A range without the schema 2 day has none.
+	w = do(h, "GET", "/v1/experiments?from=2026-10-26&to=2026-10-27", nil)
+	if strings.TrimSpace(w.Body.String()) != `{"experiments":[]}` {
+		t.Fatalf("other range: %s", w.Body)
+	}
+	for _, p := range []string{"/v1/experiments?from=2026-13-01", "/v1/experiments?installs=some"} {
 		if w := do(h, "GET", p, nil); w.Code != http.StatusBadRequest {
 			t.Errorf("%s: %d", p, w.Code)
 		}

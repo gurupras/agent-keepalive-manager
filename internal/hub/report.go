@@ -16,8 +16,12 @@ import (
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-// SchemaVersion is the only report schema this hub accepts.
-const SchemaVersion = 1
+// The report schemas this hub accepts. Schema 2 adds experiments; schema 1
+// is still sent by older clients.
+const (
+	MinSchema = 1
+	MaxSchema = 2
+)
 
 const (
 	// MaxReportBytes bounds the body of one report.
@@ -27,6 +31,7 @@ const (
 	maxStringLen     = 64
 	maxSessionKeys   = 64
 	maxOutcomes      = 1000
+	maxExperiments   = 1000
 	// Bounds on counts and amounts keep the database's sums far from
 	// overflow; no real install comes near them.
 	maxCount  = 1_000_000_000_000
@@ -47,6 +52,9 @@ type Report struct {
 	Plans       model.DayPlans        `json:"plans"`
 	Pings       model.DayPings        `json:"pings"`
 	Outcomes    []model.OutcomeSum    `json:"outcomes"`
+	// Experiments is required from schema 2 on (an empty array when the
+	// install is in none) and refused before it.
+	Experiments []model.ExperimentSum `json:"experiments,omitempty"`
 }
 
 // ValidationError is a report that is refused with 400.
@@ -84,8 +92,8 @@ func DecodeReport(body []byte, now time.Time) (*Report, error) {
 
 // Validate applies every rule of docs/metrics.md to a decoded report.
 func (r *Report) Validate(now time.Time) error {
-	if r.Schema != SchemaVersion {
-		return invalid("schema: must be %d", SchemaVersion)
+	if r.Schema < MinSchema || r.Schema > MaxSchema {
+		return invalid("schema: must be %d to %d", MinSchema, MaxSchema)
 	}
 	if !uuidRe.MatchString(r.InstallID) {
 		return invalid("installId: must be a UUID")
@@ -177,7 +185,69 @@ func (r *Report) Validate(now time.Time) error {
 			return err
 		}
 	}
+	if err := r.checkExperiments(); err != nil {
+		return err
+	}
 	return r.checkPlausible()
+}
+
+// checkExperiments applies the field rules to experiments: required from
+// schema 2 on, refused before it. A JSON null decodes like an absent field.
+func (r *Report) checkExperiments() error {
+	switch {
+	case r.Schema < 2 && r.Experiments != nil:
+		return invalid("experiments: not in schema %d", r.Schema)
+	case r.Schema >= 2 && r.Experiments == nil:
+		return invalid("experiments: required from schema 2 (an empty array when there are none)")
+	case len(r.Experiments) > maxExperiments:
+		return invalid("experiments: more than %d entries", maxExperiments)
+	}
+	type key struct{ experiment, arm, harness, model string }
+	seen := make(map[key]int, len(r.Experiments))
+	for i, e := range r.Experiments {
+		p := fmt.Sprintf("experiments[%d].", i)
+		if err := checkString(p+"experiment", e.Experiment, true); err != nil {
+			return err
+		}
+		if e.Arm != model.ArmHold && e.Arm != model.ArmPing {
+			return invalid("%sarm: must be %q or %q", p, model.ArmHold, model.ArmPing)
+		}
+		if err := checkString(p+"harness", string(e.Harness), true); err != nil {
+			return err
+		}
+		if err := checkString(p+"model", e.Model, false); err != nil {
+			return err
+		}
+		k := key{e.Experiment, e.Arm, string(e.Harness), e.Model}
+		if j, ok := seen[k]; ok {
+			return invalid("%s: same experiment, arm, harness and model as experiments[%d]", p[:len(p)-1], j)
+		}
+		seen[k] = i
+		for _, c := range []struct {
+			name string
+			n    int64
+		}{
+			{"episodes", int64(e.Episodes)}, {"returned", int64(e.Returned)}, {"warm", int64(e.Warm)},
+			{"pings", int64(e.Pings)}, {"pingCalls", int64(e.PingCalls)},
+			{"contextTokens", e.ContextTokens}, {"quietMinutes", e.QuietMinutes},
+		} {
+			if err := checkCount(p+c.name, c.n); err != nil {
+				return err
+			}
+		}
+		for _, a := range []struct {
+			name string
+			v    float64
+		}{
+			{"pingCostUsd", e.PingCostUSD}, {"rewriteUsd", e.RewriteUSD},
+			{"costUsd", e.CostUSD}, {"costSqUsd", e.CostSqUSD},
+		} {
+			if err := checkAmount(p+a.name, a.v, false); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // Plausibility bounds: the most any real install can report for one day,
@@ -199,7 +269,13 @@ const (
 	maxPingCost = 25.0
 	// netTolerance absorbs the sender's rounding of each sum to 1e-6.
 	netTolerance = 0.01
+	// maxCallsPerPing is the most API calls one ping's reply may take.
+	maxCallsPerPing = 50
 )
+
+// sqTolerance absorbs rounding in a sum of squares next to a sum of cost c:
+// netTolerance, plus a part relative to c² for large sums.
+func sqTolerance(c float64) float64 { return netTolerance + 1e-6*c*c }
 
 var versionRe = regexp.MustCompile(`^(dev|[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?)$`)
 
@@ -248,6 +324,39 @@ func (r *Report) checkPlausible() error {
 			return invalid("%spingCostUsd: more than $%v per ping", pre, maxPingCost)
 		case math.Abs(o.NetUSD-(o.AvoidedUSD-o.PingCostUSD)) > netTolerance:
 			return invalid("%snetUsd: must be avoidedUsd minus pingCostUsd", pre)
+		}
+	}
+	for i, e := range r.Experiments {
+		pre := fmt.Sprintf("experiments[%d].", i)
+		// costSqUsd sums the squares of non-negative episode costs, so it
+		// lies between costUsd²/episodes (all equal) and costUsd² (one
+		// episode holds it all).
+		c2 := e.CostUSD * e.CostUSD
+		switch {
+		case e.Episodes < 1:
+			return invalid("%sepisodes: must be at least 1", pre)
+		case e.Returned > e.Episodes:
+			return invalid("%sreturned: more than episodes", pre)
+		case e.Warm > e.Returned:
+			return invalid("%swarm: more than returned", pre)
+		case e.Arm == model.ArmHold && (e.Pings != 0 || e.PingCostUSD != 0):
+			return invalid("%spings: arm %q sends none", pre, model.ArmHold)
+		case int64(e.PingCalls) > int64(e.Pings)*maxCallsPerPing:
+			return invalid("%spingCalls: more than %d per ping", pre, maxCallsPerPing)
+		case e.ContextTokens > int64(e.Episodes)*maxEntryContext:
+			return invalid("%scontextTokens: more than %d per episode", pre, maxEntryContext)
+		case e.QuietMinutes > int64(e.Episodes)*maxPlanHours*60:
+			return invalid("%squietMinutes: more than %d hours per episode", pre, maxPlanHours)
+		case e.PingCostUSD > float64(e.Pings)*maxPingCost+netTolerance:
+			return invalid("%spingCostUsd: more than $%v per ping", pre, maxPingCost)
+		case e.RewriteUSD > float64(e.ContextTokens)*maxWritePerMTok/1e6+netTolerance:
+			return invalid("%srewriteUsd: more than re-writing its context could cost", pre)
+		case math.Abs(e.CostUSD-(e.PingCostUSD+e.RewriteUSD)) > netTolerance:
+			return invalid("%scostUsd: must be pingCostUsd plus rewriteUsd", pre)
+		case e.CostSqUSD < c2/float64(e.Episodes)-sqTolerance(e.CostUSD):
+			return invalid("%scostSqUsd: less than costUsd² / episodes", pre)
+		case e.CostSqUSD > c2+sqTolerance(e.CostUSD):
+			return invalid("%scostSqUsd: more than costUsd²", pre)
 		}
 	}
 	return nil
