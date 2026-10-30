@@ -210,7 +210,7 @@ func (r *Reporter) SetEnabled(on bool) error {
 
 // SetExperiments turns taking part in experiments on or off and persists
 // the choice. Off stops new episodes at once; episodes closed earlier and
-// not yet reported are left out of reports.
+// not yet reported are left out of reports, queued ones included.
 func (r *Reporter) SetExperiments(on bool) error {
 	cur, locked, _ := r.opts.Settings.Experiments()
 	if locked {
@@ -475,6 +475,9 @@ func (r *Reporter) sendDue(parent context.Context) (retryAt time.Time) {
 		}
 		day := days[0]
 		body, err := r.q.read(day)
+		if on, _, _ := r.opts.Settings.Experiments(); err == nil && !on {
+			body = withoutExperiments(body) // queued before the opt-out
+		}
 		r.mu.Unlock()
 		if err != nil {
 			r.mu.Lock()

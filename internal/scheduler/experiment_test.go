@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"errors"
 	"strconv"
 	"testing"
 	"time"
@@ -134,7 +135,7 @@ func TestExperimentBudget(t *testing.T) {
 	h := newHarness(t)
 	h.exp = true
 	h.addSession(key, 100)
-	h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusWorking, model.QuietTool })
+	h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusWorking, model.QuietOther })
 	h.tickAt(time.Minute)
 	must(t)(h.svc.StartPlan(bg, key, 4))
 	h.svc.mu.Lock()
@@ -202,5 +203,70 @@ func TestExperimentStopRule(t *testing.T) {
 	h.restart()
 	if !h.svc.expStopped[subagentsExp] {
 		t.Fatal("stop not kept across a restart")
+	}
+}
+
+func TestExperimentReservesBudget(t *testing.T) {
+	h := quietHarness(t, model.ArmPing)
+	h.tickAt(55 * time.Minute)
+	if h.del.count() != 1 {
+		t.Fatalf("treatment pings = %d", h.del.count())
+	}
+	// Until the reply is priced, a cache read of the context is held
+	// against the day's budget.
+	h.svc.mu.Lock()
+	held := h.svc.expCost
+	h.svc.mu.Unlock()
+	if !near(held, (ctxK+10)*0.2/1e6) { // the context includes the input tokens
+		t.Fatalf("held %v before the reply", held)
+	}
+	h.at(55*time.Minute + 5*time.Second)
+	h.reply(key, h.del.last().id, warmUsage(ctxK))
+	h.tickAt(56 * time.Minute)
+	h.svc.mu.Lock()
+	spent := h.svc.expCost
+	h.svc.mu.Unlock()
+	if !near(spent, warmPingCost) {
+		t.Fatalf("spent %v after the reply; want %v", spent, warmPingCost)
+	}
+}
+
+// The ping arm must not fail or pause a plan that, working, would have
+// run on: an unreachable session or failing deliveries just stop the
+// treatment.
+func TestExperimentTreatmentNeverFailsPlan(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		break_ func(h *harness)
+	}{
+		{"unreachable", func(h *harness) {
+			h.src.edit(key, func(s *model.Session) { s.Reach = model.ReachNone })
+		}},
+		{"delivery fails", func(h *harness) { h.del.setErr(errors.New("boom")) }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			h := quietHarness(t, model.ArmPing)
+			c.break_(h)
+			for m := 50; m <= 70; m++ {
+				h.tickAt(time.Duration(m) * time.Minute)
+			}
+			if p := h.plan(key); p == nil || p.State != model.PlanActive {
+				t.Fatalf("plan %+v", p)
+			}
+		})
+	}
+}
+
+func TestExperimentNoneMidTurn(t *testing.T) {
+	h := newHarness(t)
+	h.exp = true
+	h.addSession(key, 100)
+	h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusWorking, model.QuietTool })
+	h.tickAt(time.Minute)
+	must(t)(h.svc.StartPlan(bg, key, 4))
+	h.tickAt(2 * time.Minute)
+	h.tickAt(55 * time.Minute)
+	if v, _ := h.svc.Session(key); v.Experiment != nil || h.del.count() != 0 {
+		t.Fatalf("episode %+v, pings %d for a session mid-turn", v.Experiment, h.del.count())
 	}
 }

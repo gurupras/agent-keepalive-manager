@@ -1,23 +1,29 @@
 package experiment
 
 import (
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-func TestOnePerCause(t *testing.T) {
-	ids := map[string]bool{}
-	for _, c := range model.QuietCauses {
-		e, ok := ForCause(c)
-		if !ok || e.Cause != c || ids[e.ID] {
-			t.Fatalf("cause %s: %+v %v", c, e, ok)
+func TestAtMostOnePerCause(t *testing.T) {
+	ids, causes := map[string]bool{}, map[model.QuietCause]bool{}
+	for _, e := range All {
+		if ids[e.ID] || causes[e.Cause] || !slices.Contains(model.QuietCauses, e.Cause) {
+			t.Fatalf("experiment %+v", e)
 		}
-		ids[e.ID] = true
+		ids[e.ID], causes[e.Cause] = true, true
+		if got, ok := ForCause(e.Cause); !ok || got.ID != e.ID {
+			t.Fatalf("ForCause(%s) = %+v %v", e.Cause, got, ok)
+		}
 	}
-	if len(All) != len(model.QuietCauses) {
-		t.Fatalf("%d experiments for %d causes", len(All), len(model.QuietCauses))
+	// Mid-turn causes take no experiment: a ping would interrupt the task.
+	for _, c := range []model.QuietCause{model.QuietTool, model.QuietWaiting} {
+		if e, ok := ForCause(c); ok {
+			t.Fatalf("cause %s has %+v", c, e)
+		}
 	}
 }
 

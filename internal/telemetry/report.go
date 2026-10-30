@@ -6,6 +6,7 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
 	"strings"
@@ -14,7 +15,9 @@ import (
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-// Schema is the report schema version. Schema 2 added Experiments.
+// Schema is the report schema version. Schema 2 added Experiments; a
+// report without any is sent as schema 1, which a hub from before
+// experiments also takes.
 const Schema = 2
 
 // Report is one install's usage for one UTC day: the body POSTed to the
@@ -32,9 +35,9 @@ type Report struct {
 	Plans       Plans          `json:"plans"`
 	Pings       Pings          `json:"pings"`
 	Outcomes    []Outcome      `json:"outcomes"`
-	// Experiments sums the experiment episodes closed on the day; empty
-	// when the install does not take part (docs/experiments.md).
-	Experiments []model.ExperimentSum `json:"experiments"`
+	// Experiments sums the experiment episodes closed on the day; absent,
+	// in schema 1, when there are none (docs/experiments.md).
+	Experiments []model.ExperimentSum `json:"experiments,omitempty"`
 }
 
 // Plans counts the plans started on the day.
@@ -145,11 +148,32 @@ func BuildReport(installID string, b Build, ds model.DayStats) Report {
 		return a.EndedBy < b.EndedBy
 	})
 	r.Experiments = experiments(ds.Experiments)
+	if len(r.Experiments) == 0 {
+		r.dropExperiments()
+	}
 	return r
 }
 
 // experiments sanitises experiment sums, merging those that sanitise to
 // the same group.
+// dropExperiments makes r a schema 1 report, without experiments.
+func (r *Report) dropExperiments() { r.Schema, r.Experiments = 1, nil }
+
+// withoutExperiments returns a queued report body without its experiments,
+// or body as it is when it has none (or cannot be read).
+func withoutExperiments(body []byte) []byte {
+	var r Report
+	if err := json.Unmarshal(body, &r); err != nil || len(r.Experiments) == 0 {
+		return body
+	}
+	r.dropExperiments()
+	b, err := json.Marshal(r)
+	if err != nil {
+		return body
+	}
+	return b
+}
+
 func experiments(in []model.ExperimentSum) []model.ExperimentSum {
 	type key struct{ x, a, h, m string }
 	idx := map[key]int{}

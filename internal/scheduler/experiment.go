@@ -82,9 +82,15 @@ func (s *Service) budgetLeft(ctx context.Context, now time.Time) bool {
 			s.log.Warn("scheduler: reading treatment spend failed", "err", err)
 			return false
 		}
-		s.expDay, s.expPings, s.expCost = day, n, cost
+		eps, err := s.cfg.Store.EpisodesStarted(context.WithoutCancel(ctx), start, start.AddDate(0, 0, 1))
+		if err != nil {
+			s.log.Warn("scheduler: counting experiment episodes failed", "err", err)
+			return false
+		}
+		s.expDay, s.expPings, s.expCost, s.expEpisodes = day, n, cost, eps
 	}
-	return s.expPings < experiment.DailyPings && s.expCost < experiment.DailyCostUSD
+	return s.expPings < experiment.DailyPings && s.expCost < experiment.DailyCostUSD &&
+		s.expEpisodes < experiment.DailyEpisodes
 }
 
 // experimentStep opens, follows and closes the plan's episode, and reports
@@ -130,7 +136,7 @@ func (s *Service) experimentStep(ctx context.Context, now time.Time, pr *planRun
 func (s *Service) openEpisode(ctx context.Context, now time.Time, pr *planRun, sess model.Session, ttl time.Duration) {
 	from := sess.LastCall
 	if pr.State != model.PlanActive || pr.WaitWarm || pr.pending != nil || from.IsZero() ||
-		from.Equal(pr.epDone) || !now.Before(from.Add(ttl)) || !s.enrolled() {
+		from.Equal(pr.epDone) || !now.Before(from.Add(ttl)) || s.undeliverable(pr, sess) != "" || !s.enrolled() {
 		return
 	}
 	exp, ok := experiment.ForCause(sess.Quiet)
@@ -163,6 +169,7 @@ func (s *Service) openEpisode(ctx context.Context, now time.Time, pr *planRun, s
 		pr.epDone = from // the stretch had its episode already
 		return
 	}
+	s.expEpisodes++ // budgetLeft has just set expDay to today
 	pr.ep = &episodeRun{Episode: e, maxPings: pricing.BreakEvenPings(w, price.Read)}
 	s.log.Info("scheduler: experiment episode opened", "key", pr.Key, "experiment", e.Experiment, "arm", e.Arm)
 }

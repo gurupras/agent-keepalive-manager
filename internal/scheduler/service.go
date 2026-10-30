@@ -234,7 +234,7 @@ func (s *Service) PingNow(ctx context.Context, key string) (model.PingRecord, er
 	if pr != nil && pr.State != model.PlanActive {
 		pr = nil
 	}
-	j, ok := s.newPing(ctx, s.now(), pr, sess)
+	j, ok := s.newPing(ctx, s.now(), pr, sess, false)
 	s.mu.Unlock()
 	if !ok {
 		return model.PingRecord{}, fmt.Errorf("scheduler: the ping could not be recorded")

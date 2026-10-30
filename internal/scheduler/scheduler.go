@@ -130,11 +130,12 @@ type Service struct {
 	subs      map[int]chan model.Event
 	nextSub   int
 
-	expSalt    string          // assigns episodes to arms
-	expStopped map[string]bool // experiments the stop rule ended on this install
-	expDay     string          // UTC day expPings and expCost count
-	expPings   int             // treatment pings sent on expDay
-	expCost    float64         // what they cost
+	expSalt     string          // assigns episodes to arms
+	expStopped  map[string]bool // experiments the stop rule ended on this install
+	expDay      string          // UTC day expPings, expCost and expEpisodes count
+	expPings    int             // treatment pings sent on expDay
+	expCost     float64         // what they cost
+	expEpisodes int             // episodes opened on expDay
 }
 
 var (

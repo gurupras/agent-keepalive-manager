@@ -544,3 +544,37 @@ func TestExperimentsOptOut(t *testing.T) {
 		t.Fatalf("locked: %v", err)
 	}
 }
+
+// A report queued before the opt-out goes out without its experiments, as
+// schema 1.
+func TestExperimentsOptOutQueued(t *testing.T) {
+	g := newRig(t, t0)
+	g.stats.mu.Lock()
+	g.stats.days[dayOf(t0)] = model.DayStats{Experiments: []model.ExperimentSum{{Experiment: "x", Arm: model.ArmHold,
+		Harness: model.Claude, Episodes: 1}}}
+	g.stats.mu.Unlock()
+	ctx := context.Background()
+	g.r.pass(ctx)
+	g.hub.status = []int{500}
+	g.now = t0.AddDate(0, 0, 1)
+	g.r.pass(ctx)
+	if len(g.queued()) != 1 {
+		t.Fatalf("queue %v", g.queued())
+	}
+	if err := g.r.SetExperiments(false); err != nil {
+		t.Fatal(err)
+	}
+	g.now = g.now.Add(2 * time.Hour)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 1 || g.hub.got[0].Schema != 1 || g.hub.got[0].Experiments != nil {
+		t.Fatalf("sent %+v", g.hub.got)
+	}
+}
+
+func TestReportWithoutExperimentsIsSchema1(t *testing.T) {
+	r := BuildReport("id", Build{"1.4.0", "linux", "amd64", "public", "deb"}, model.DayStats{Day: "2026-10-26"})
+	b, _ := json.Marshal(r)
+	if r.Schema != 1 || strings.Contains(string(b), "experiments") {
+		t.Fatalf("report %s", b)
+	}
+}

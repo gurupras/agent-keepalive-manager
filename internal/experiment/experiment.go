@@ -11,7 +11,8 @@
 // Treatments spend the user's money, so they are bounded: only sessions with
 // an active plan take part, a treatment episode sends no more pings than the
 // break-even count of its model, an install spends at most DailyPings pings
-// and DailyCostUSD a UTC day on treatments, and an experiment stops on an
+// and DailyCostUSD a UTC day on treatments (and opens at most DailyEpisodes
+// episodes), and an experiment stops on an
 // install once its treatments have cost more than letting the cache go cold
 // would have (StopAfter).
 package experiment
@@ -34,13 +35,13 @@ type Experiment struct {
 
 // All is every experiment this release runs. Several run at once: each
 // takes the episodes of its own cause.
+//
+// The tool and waiting causes have none: their main agent is mid-turn, and
+// Claude Code hands a message that arrives then to the running turn, so a
+// ping would interrupt the agent's task rather than start a turn of its own.
 var All = []Experiment{
 	{ID: "busy-ping-subagents-1", Cause: model.QuietSubagents,
 		Summary: "Ping while the main agent waits for background sub-agents"},
-	{ID: "busy-ping-tool-1", Cause: model.QuietTool,
-		Summary: "Ping while the main agent waits on a long tool call"},
-	{ID: "busy-ping-waiting-1", Cause: model.QuietWaiting,
-		Summary: "Ping while a permission prompt waits for the user"},
 	{ID: "busy-ping-other-1", Cause: model.QuietOther,
 		Summary: "Ping while the session stays busy for another reason"},
 }
@@ -52,6 +53,9 @@ const (
 	// either arm, so the arms stay comparable.
 	DailyPings   = 20
 	DailyCostUSD = 1.0
+	// DailyEpisodes bounds the episodes an install opens per UTC day, in
+	// both arms together, so no one install outweighs the rest.
+	DailyEpisodes = 50
 	// StopAfter: once this many treatment episodes of an experiment have
 	// closed on an install and they cost more in total (pings plus the
 	// cache writes on return) than re-writing the cache every time would

@@ -37,9 +37,6 @@ type planRun struct {
 	// one closed, so a stretch opens one episode at most.
 	ep     *episodeRun
 	epDone time.Time
-	// treat: the ping arm pings the working session as if it were idle;
-	// pings sent while it is set belong to the episode.
-	treat bool
 }
 
 // pendingReturn is a segment whose idle gap ended with real activity at
@@ -197,15 +194,20 @@ func (s *Service) advance(ctx context.Context, now time.Time, pr *planRun, jump 
 	refresh := sess.LastCall
 	stale := s.staleness(pr, sess, now)
 	working := sess.Status == model.StatusWorking && stale == ""
-	pr.treat = s.experimentStep(ctx, now, pr, sess, working, ttl)
-	if pr.treat {
-		working = false // the main agent makes no calls; ping as if idle
-	}
 	waiting := s.unconsumed(key) != nil // a ping may still refresh the cache
 	expires := refresh.Add(ttl)
 	// Evaluated from the transcript every tick, so a clock jump (rule 10)
-	// or a restart sees an expired cache before any ping is sent.
+	// or a restart sees an expired cache before any ping is sent. A
+	// working session's cache is never expired here, treatment or not: an
+	// experiment must not fail or pause a plan that would have run on.
 	expired := !working && !waiting && !refresh.IsZero() && !now.Before(expires)
+	// treat: the ping arm pings the working session as if it were idle,
+	// while its cache is warm and a ping can reach it.
+	treat := s.experimentStep(ctx, now, pr, sess, working, ttl) && now.Before(expires) &&
+		s.undeliverable(pr, sess) == ""
+	if treat {
+		working = false // the main agent makes no calls; ping as if idle
+	}
 
 	if !now.Before(pr.Until) && pr.State == model.PlanActive {
 		pr.NextPing = time.Time{}
@@ -276,7 +278,7 @@ func (s *Service) advance(ctx context.Context, now time.Time, pr *planRun, jump 
 		pr.Blocked = fmt.Sprintf("process %d is not running", sess.PID)
 		return job{}, false
 	}
-	return s.newPing(ctx, now, pr, sess)
+	return s.newPing(ctx, now, pr, sess, treat)
 }
 
 // undeliverable says why the plan could not have pinged in time, or "".

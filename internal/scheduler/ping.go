@@ -21,6 +21,9 @@ type pingRun struct {
 	// storedCalls have been seen, never with a smaller count.
 	restored    bool
 	storedCalls int
+	// reserve: a treatment ping's estimated cost, held against the daily
+	// budget from its send until its reply is priced.
+	reserve float64
 }
 
 // job is one delivery decided under the lock and made outside it.
@@ -32,8 +35,8 @@ type job struct {
 
 // newPing records a ping as "sending" before anything is delivered (rule 3)
 // and returns the delivery to make. pr may be nil (PingNow without a plan).
-// Requires s.mu.
-func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess model.Session) (job, bool) {
+// treat: a treatment ping of the plan's episode. Requires s.mu.
+func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess model.Session, treat bool) (job, bool) {
 	id := newPingID()
 	rec := store.Ping{PingRecord: model.PingRecord{ID: id, Key: sess.Key, SentAt: now, State: model.PingSending}}
 	mdl := sess.Model
@@ -41,7 +44,7 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 	if pr != nil {
 		pr.lastTry = now
 		rec.PlanID = pr.ID
-		if pr.treat && pr.ep != nil {
+		if treat && pr.ep != nil {
 			rec.EpisodeID, rec.Experiment = pr.ep.ID, true
 		}
 		if pr.seg == nil {
@@ -75,11 +78,18 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 	if newSeg != nil {
 		pr.seg = newSeg
 	}
+	run := &pingRun{Ping: rec, model: mdl, sess: sess, prevRefresh: sess.LastCall}
 	if rec.EpisodeID != 0 {
 		pr.ep.pings++
 		s.expPings++
+		// A cache read of the context, so that pings sent before earlier
+		// replies are priced cannot overrun the daily budget.
+		if price, ok := s.cfg.Pricing.Lookup(pr.ep.Model); ok {
+			run.reserve = float64(pr.ep.ContextSize) * price.Read / 1e6
+			s.expCost += run.reserve
+		}
 	}
-	s.pings[id] = &pingRun{Ping: rec, model: mdl, sess: sess, prevRefresh: sess.LastCall}
+	s.pings[id] = run
 	s.inflight[sess.Key] = id
 	s.follow(sess.Key)
 	s.publish("ping", rec.PingRecord)
@@ -236,8 +246,9 @@ func (s *Service) matchPing(ctx context.Context, now time.Time, key string, a mo
 			pp.PingCost += p.Cost - old
 		}
 		if p.EpisodeID != 0 && store.Day(p.SentAt) == s.expDay {
-			s.expCost += p.Cost - old
+			s.expCost += p.Cost - old - p.reserve
 		}
+		p.reserve = 0
 		s.savePing(ctx, p)
 		if !wasVerified && pp != nil {
 			s.onVerified(ctx, now, pp, p, a)
@@ -247,10 +258,24 @@ func (s *Service) matchPing(ctx context.Context, now time.Time, key string, a mo
 
 // onVerified reacts to a ping's first reply: a warm one resets the cold
 // streak; a cold one books its segment as wasted, teaches a shorter TTL
-// and, the second time in a row, pauses the plan (rule 6). Requires s.mu.
+// and, the second time in a row, pauses the plan (rule 6). Treatment pings
+// neither teach nor pause. Requires s.mu.
 func (s *Service) onVerified(ctx context.Context, now time.Time, pr *planRun, p *pingRun, reply model.Activity) {
 	if !p.Cold {
-		pr.ColdStreak = 0
+		if p.EpisodeID == 0 {
+			pr.ColdStreak = 0
+		}
+		return
+	}
+	// The reply re-wrote the cache: the next gap starts at it.
+	if g := pr.seg; g != nil && g.IdleFrom.Equal(p.SegFrom) {
+		pr.seg = nil
+		s.book(ctx, pr, *g, p.SentAt, model.EndCold, model.OutcomeWasted, 0)
+	}
+	pr.BaseFrom, pr.BaseContext = reply.Anchor(), reply.Usage.Context()
+	if p.EpisodeID != 0 {
+		// A busy session may hold a treatment ping before answering it, so
+		// a cold reply says nothing about the TTL and does not pause.
 		return
 	}
 	pr.ColdStreak++
@@ -264,12 +289,6 @@ func (s *Service) onVerified(ctx context.Context, now time.Time, pr *planRun, p 
 		gap = reply.Anchor().Sub(p.prevRefresh)
 	}
 	nt := s.learn(ctx, sess.Harness, sess.Model, cur, gap)
-	// The reply re-wrote the cache: the next gap starts at it.
-	if g := pr.seg; g != nil && g.IdleFrom.Equal(p.SegFrom) {
-		pr.seg = nil
-		s.book(ctx, pr, *g, p.SentAt, model.EndCold, model.OutcomeWasted, 0)
-	}
-	pr.BaseFrom, pr.BaseContext = reply.Anchor(), reply.Usage.Context()
 	if pr.ColdStreak >= 2 {
 		s.pause(ctx, pr, fmt.Sprintf("two pings in a row found the cache cold (last: %s); the cache TTL seems shorter than %s",
 			p.ID, nt.Round(time.Second)))

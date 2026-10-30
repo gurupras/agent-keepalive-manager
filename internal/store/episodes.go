@@ -70,6 +70,13 @@ func (s *Store) CloseOpenEpisodes(ctx context.Context, at time.Time) error {
 	return err
 }
 
+// EpisodesStarted counts the episodes opened in [from, to), in any arm.
+func (s *Store) EpisodesStarted(ctx context.Context, from, to time.Time) (n int, err error) {
+	err = s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM episodes WHERE started_at >= ? AND started_at < ?`,
+		ms(from), ms(to)).Scan(&n)
+	return n, err
+}
+
 // TreatmentSpend returns the treatment pings sent in [from, to) and what
 // they cost.
 func (s *Store) TreatmentSpend(ctx context.Context, from, to time.Time) (pings int, cost float64, err error) {
