@@ -36,6 +36,14 @@ func statStart(s string) string {
 	return f[19]
 }
 
+func parent(pid int) int {
+	b, err := os.ReadFile(filepath.Join(Root, strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return 0
+	}
+	return statPPID(string(b))
+}
+
 // statPPID extracts field 4, the parent pid, from a stat line.
 func statPPID(s string) int {
 	i := strings.LastIndexByte(s, ')')

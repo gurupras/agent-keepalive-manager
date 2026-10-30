@@ -249,11 +249,25 @@ func (s *Server) waitForAgents(ctx context.Context, args json.RawMessage) (any, 
 	if err != nil {
 		return nil, err
 	}
+	// A Notifier wakes the wait as soon as the server pushes a change; the
+	// timer then only catches what time alone changes (a session turning
+	// stuck). Without one, the timer polls.
+	notifier, _ := s.Backend.(Notifier)
+	changed := func() <-chan struct{} {
+		if notifier == nil {
+			return nil
+		}
+		return notifier.Changed()
+	}
 	poll := s.Poll
 	if poll <= 0 {
 		poll = 3 * time.Second
+		if notifier != nil {
+			poll = 15 * time.Second
+		}
 	}
 	t := deref(a.Target)
+	next := changed() // taken before looking, so no change is missed
 	w, err := s.look(ctx)
 	if err != nil {
 		return nil, err
@@ -309,7 +323,9 @@ func (s *Server) waitForAgents(ctx context.Context, args json.RawMessage) (any, 
 			_, ch, _ := done(last)
 			return map[string]any{"reason": "timeout: nothing to report yet", "waited": ago(timeout), "changes": nonNilSlice(ch), "status": last}, nil
 		case <-tick.C:
+		case <-next:
 		}
+		next = changed()
 		w, err := s.look(ctx)
 		if err != nil {
 			continue // the server restarting (an update): keep waiting

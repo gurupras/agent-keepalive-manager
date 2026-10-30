@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
@@ -36,11 +37,68 @@ type Server struct {
 	// Cwd is this process's working directory, the fallback for finding the
 	// caller where process ancestry is not visible.
 	Cwd string
-	// Parents maps pids to parent pids (proc.Parents).
-	Parents func() map[int]int
-	Now     func() time.Time
-	// Poll is how often wait_for_agents looks at the sessions.
+	// Parent returns a pid's parent pid, 0 if unknown (proc.Parent).
+	Parent func(pid int) int
+	Now    func() time.Time
+	// Poll is how often wait_for_agents looks at the sessions when the
+	// Backend is not a Notifier.
 	Poll time.Duration
+
+	mu       sync.Mutex
+	selfAnc  []int            // this process's ancestors, read once
+	selfRead bool             //
+	anc      map[string][]int // session process ancestors, read once per process
+}
+
+// Notifier is a Backend that knows when the sessions change.
+type Notifier interface {
+	// Changed returns a channel that is closed at the next change.
+	Changed() <-chan struct{}
+}
+
+// ancestorsOf walks pid's parents with s.Parent.
+func (s *Server) ancestorsOf(pid int) []int {
+	if s.Parent == nil {
+		return nil
+	}
+	var out []int
+	seen := map[int]bool{pid: true}
+	for p := s.Parent(pid); p > 0 && !seen[p]; p = s.Parent(p) {
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
+}
+
+// sessionAncestors returns the ancestry of each session's process. A
+// process's parents are read when it is first seen, so a look costs
+// nothing for sessions already known; entries for gone ones are dropped.
+func (s *Server) sessionAncestors(ss []model.SessionView) map[string][]int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.anc == nil {
+		s.anc = map[string][]int{}
+	}
+	out := make(map[string][]int, len(ss))
+	for _, v := range ss {
+		id := fmt.Sprintf("%d@%d", v.PID, v.StartedAt.UnixMilli())
+		a, ok := s.anc[id]
+		if !ok {
+			a = s.ancestorsOf(v.PID)
+		}
+		out[id] = a
+	}
+	s.anc = out
+	return out
+}
+
+func (s *Server) selfAncestors() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.selfRead {
+		s.selfAnc, s.selfRead = s.ancestorsOf(s.PID), true
+	}
+	return s.selfAnc
 }
 
 func (s *Server) now() time.Time {
@@ -138,7 +196,7 @@ type world struct {
 	sessions []model.SessionView
 	self     *model.SessionView
 	selfWhy  string // how self was found, or why it was not
-	parents  map[int]int
+	anc      map[string][]int
 }
 
 func (s *Server) look(ctx context.Context) (*world, error) {
@@ -146,11 +204,8 @@ func (s *Server) look(ctx context.Context) (*world, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &world{sessions: ss}
-	if s.Parents != nil {
-		w.parents = s.Parents()
-	}
-	anc := ancestors(w.parents, s.PID)
+	w := &world{sessions: ss, anc: s.sessionAncestors(ss)}
+	anc := s.selfAncestors()
 	for i := range ss {
 		if ss[i].PID > 0 && slices.Contains(anc, ss[i].PID) {
 			w.self, w.selfWhy = &ss[i], "this tool runs under its process"
@@ -177,16 +232,6 @@ func (s *Server) look(ctx context.Context) (*world, error) {
 	return w, nil
 }
 
-func ancestors(parent map[int]int, pid int) []int {
-	var out []int
-	seen := map[int]bool{pid: true}
-	for p := parent[pid]; p > 0 && !seen[p]; p = parent[p] {
-		seen[p] = true
-		out = append(out, p)
-	}
-	return out
-}
-
 func samePath(a, b string) bool {
 	return a != "" && b != "" && filepath.Clean(a) == filepath.Clean(b)
 }
@@ -202,7 +247,8 @@ func under(path, dir string) bool {
 
 // spawnedBy reports whether sess's process descends from the process pid.
 func (w *world) spawnedBy(sess model.SessionView, pid int) bool {
-	return pid > 0 && sess.PID != pid && slices.Contains(ancestors(w.parents, sess.PID), pid)
+	id := fmt.Sprintf("%d@%d", sess.PID, sess.StartedAt.UnixMilli())
+	return pid > 0 && sess.PID != pid && slices.Contains(w.anc[id], pid)
 }
 
 // pick resolves a target. missing lists requested sessions that are not

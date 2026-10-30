@@ -57,24 +57,21 @@ func List(names ...string) []Proc {
 	return out
 }
 
-// Ancestors returns pid's parent, its parent and so on, nearest first, as far
-// as the OS shows them (empty where it shows none).
-func Ancestors(pid int) []int { return AncestorsIn(Parents(), pid) }
-
-// Parents maps every visible pid to its parent pid.
-func Parents() map[int]int {
-	parent := map[int]int{}
-	for _, p := range list() {
-		parent[p.PID] = p.PPID
+// Parent returns pid's parent pid, 0 if unknown. It looks at that one
+// process only (on Windows, a process snapshot).
+func Parent(pid int) int {
+	if pid <= 0 {
+		return 0
 	}
-	return parent
+	return parent(pid)
 }
 
-// AncestorsIn is Ancestors over a Parents map.
-func AncestorsIn(parent map[int]int, pid int) []int {
+// Ancestors returns pid's parent, its parent and so on, nearest first, as far
+// as the OS shows them (empty where it shows none).
+func Ancestors(pid int) []int {
 	var out []int
 	seen := map[int]bool{pid: true}
-	for p := parent[pid]; p > 0 && !seen[p]; p = parent[p] {
+	for p := Parent(pid); p > 0 && !seen[p]; p = Parent(p) {
 		seen[p] = true
 		out = append(out, p)
 	}

@@ -128,3 +128,11 @@ func lsof(pid int, extra ...string) []string {
 	}
 	return names
 }
+
+func parent(pid int) int {
+	k, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || int(k.Proc.P_pid) != pid {
+		return 0
+	}
+	return int(k.Eproc.Ppid)
+}

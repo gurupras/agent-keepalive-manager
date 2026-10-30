@@ -2,7 +2,11 @@
 
 `agent-keepalive mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server. Add it to Claude Code, Codex or any MCP client, and the agent itself can keep its session warm ("keep this alive for 24 hours"). An agent that coordinates other agents can also keep them warm and check how they are doing.
 
-It runs over standard input and output and talks to the local server through the [local API](/api), with the API token from the data directory. If no server is running, it starts one in the background, as `open` does.
+It runs over standard input and output and talks to the local server through the [local API](/api), with the API token from the data directory.
+
+The server does the tracking; the MCP server only asks it. The first tool call from any agent starts the server in the background if none is running. The server is a separate program that keeps running after that agent exits, and every later call, from any agent, uses it. When several agents make their first call at once, a lock in the data directory makes one of them start the server while the others wait for it.
+
+After its first call, each agent's MCP server follows the server's WebSocket, which pushes the session list whenever a scan changes it. Tool calls answer from that copy in about a millisecond, and `wait_for_agents` wakes on the push instead of polling. Process ancestry is read once per process. If the user stops the server, the MCP servers do not restart it until a tool call needs it.
 
 ## Setting it up
 

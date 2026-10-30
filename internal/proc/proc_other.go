@@ -10,3 +10,4 @@ func list() []Proc                   { return nil }
 func env(int, string) (string, bool) { return "", false }
 func cwd(int) string                 { return "" }
 func openFiles(int) []string         { return nil }
+func parent(int) int                 { return 0 }

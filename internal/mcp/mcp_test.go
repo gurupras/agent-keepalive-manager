@@ -116,9 +116,9 @@ func newServer(f *fakeBackend) *Server {
 	parents := map[int]int{100: 1, 101: 100, 102: 101, 110: 100, 111: 110, 112: 110, 200: 1}
 	return &Server{
 		Backend: f, Version: "test", PID: 102, Cwd: "/w/boss",
-		Parents: func() map[int]int { return parents },
-		Now:     func() time.Time { return t0 },
-		Poll:    time.Millisecond,
+		Parent: func(pid int) int { return parents[pid] },
+		Now:    func() time.Time { return t0 },
+		Poll:   time.Millisecond,
 	}
 }
 
@@ -187,7 +187,7 @@ func TestTargets(t *testing.T) {
 func TestSelfByCwd(t *testing.T) {
 	f := fixture()
 	s := newServer(f)
-	s.Parents = func() map[int]int { return nil } // no ancestry (Windows without it, a sandbox)
+	s.Parent = nil // no ancestry (a sandbox, an OS that hides it)
 	out, ok := call(t, s, "list_sessions", `{"target":{"self":true}}`)
 	if !ok || strings.Join(keys(out["sessions"], "key"), " ") != "claude:boss" {
 		t.Fatalf("self by cwd: %v", out)
