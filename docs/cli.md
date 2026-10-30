@@ -15,6 +15,7 @@ To run the server and web UI without the window, name the command: `agent-keepal
 | `serve` | Run the server in the foreground. |
 | `app` | Start the server in the background if none is running, then open the desktop window. Without the window installed, or when it cannot start (no WebKitGTK 4.1, no WebView2 Runtime), it opens the UI in your browser. |
 | `open` | Start the server in the background if none is running, then open the UI in your browser. |
+| `mcp` | Serve the Model Context Protocol on standard input and output, so an agent can keep its own session, or a swarm, warm and check on it. Starts a background server if none is running. See [Agents and swarms](/agents). |
 | `status` | Show whether a server is running, and where. |
 | `stop` | Stop the running server. |
 | `metrics on \| off \| status \| preview \| reset-id` | Usage reports: turn them on or off, show the current state, print the next report exactly as it would be sent, or start over with a new random install id. See [Usage reports and privacy](/metrics). |
@@ -44,6 +45,12 @@ Every command takes `--data-dir`, and finds the running server through it.
 | `--port N` | Port for a server this starts. |
 
 `AGENT_KEEPALIVE_DESKTOP` names the window's executable, or `none` to open a browser instead.
+
+### `mcp` flags
+
+| Flag | |
+|---|---|
+| `--port N` | Port for a server this starts. |
 
 ### `open` flags
 

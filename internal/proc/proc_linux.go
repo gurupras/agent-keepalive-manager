@@ -36,6 +36,20 @@ func statStart(s string) string {
 	return f[19]
 }
 
+// statPPID extracts field 4, the parent pid, from a stat line.
+func statPPID(s string) int {
+	i := strings.LastIndexByte(s, ')')
+	if i < 0 {
+		return 0
+	}
+	f := strings.Fields(s[i+1:])
+	if len(f) < 2 {
+		return 0
+	}
+	n, _ := strconv.Atoi(f[1])
+	return n
+}
+
 func list() []Proc {
 	ents, err := os.ReadDir(Root)
 	if err != nil {
@@ -53,11 +67,13 @@ func list() []Proc {
 			continue // kernel thread or gone
 		}
 		exe, _ := os.Readlink(filepath.Join(dir, "exe"))
+		stat, _ := os.ReadFile(filepath.Join(dir, "stat"))
 		out = append(out, Proc{
 			PID:   pid,
 			Exe:   exe,
 			Args:  strings.Split(strings.TrimRight(string(raw), "\x00"), "\x00"),
-			Start: startTime(pid),
+			Start: statStart(string(stat)),
+			PPID:  statPPID(string(stat)),
 		})
 	}
 	return out

@@ -11,6 +11,7 @@ Keeps the provider prompt cache of your Claude Code and Codex CLI sessions warm 
 - **Shows what it cost and saved.** A ledger books every idle period as saved (you came back to a warm cache) or wasted (you did not), using list prices you can override.
 - **One file, any OS.** Pure Go with the Vue UI embedded. Linux, macOS and Windows, amd64 and arm64.
 - **Updates itself, or lets your package manager do it.** Signed apt/dnf/pacman repositories, a Homebrew tap, and self-update for the AppImage, Windows and macOS installers.
+- **Agents can ask for it.** `agent-keepalive mcp` is an MCP server: tell Claude Code or Codex "keep this alive for 24 hours", or let a coordinator keep its swarm warm and watch which agents are stuck or waiting ([docs/agents.md](docs/agents.md)).
 - **Usage metrics you can turn off.** Pseudonymous daily totals to a hub you can run yourself (below).
 
 ## Install
@@ -50,7 +51,9 @@ Without the window:
 - `agent-keepalive open`: the server, with the UI in your browser.
 - `agent-keepalive serve`: the server alone, in the foreground; the UI is at `http://127.0.0.1:4344/`.
 
-The `.tar.gz`/`.zip` archives and Homebrew are the server and web UI without the window; there, `agent-keepalive` runs `serve`. Other commands: `status`, `stop`, `update`, `metrics`, `version`.
+The `.tar.gz`/`.zip` archives and Homebrew are the server and web UI without the window; there, `agent-keepalive` runs `serve`. Other commands: `mcp`, `status`, `stop`, `update`, `metrics`, `version`.
+
+For agents: `claude mcp add --scope user agent-keepalive -- agent-keepalive mcp`, then ask the agent to keep its session alive.
 
 On Linux, to run the server at login: `systemctl --user enable --now agent-keepalive`.
 

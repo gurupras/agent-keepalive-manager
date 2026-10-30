@@ -68,6 +68,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdApp(rest, stdout, stderr)
 	case "open":
 		err = cmdOpen(rest, stdout, stderr)
+	case "mcp":
+		err = cmdMCP(rest, os.Stdin, stdout, stderr)
 	case "status":
 		err = cmdStatus(rest, stdout)
 	case "stop":
@@ -119,6 +121,8 @@ Commands:
              (the default for the desktop installs)
   serve      run the server in the foreground (the default otherwise)
   open       start the server in the background if needed and open the UI in a browser
+  mcp        serve the Model Context Protocol on stdin/stdout, for agents
+             (add it to Claude Code: claude mcp add agent-keepalive -- agent-keepalive mcp)
   status     show whether a server is running
   stop       stop the running server
   metrics    on | off | status | preview | reset-id   (usage reports)

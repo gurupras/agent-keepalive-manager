@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gurupras/agent-keepalive-manager/internal/apitypes"
+	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
 // client calls a running server's API with its token.
@@ -77,8 +78,12 @@ func (e *apiError) Is(target error) bool {
 	switch target {
 	case apitypes.ErrLocked:
 		return e.status == http.StatusForbidden
-	case apitypes.ErrUnavailable:
+	case apitypes.ErrUnavailable, model.ErrConflict:
 		return e.status == http.StatusConflict
+	case model.ErrNotFound:
+		return e.status == http.StatusNotFound
+	case model.ErrInvalid:
+		return e.status == http.StatusBadRequest
 	}
 	return false
 }

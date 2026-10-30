@@ -13,7 +13,7 @@ Both Go programs are pure Go (`CGO_ENABLED=0`) and embed their Vue UI, so each i
 ## Repository layout
 
 ```
-cmd/agent-keepalive/         the local server + CLI (serve, app, open, status, stop, update, metrics, version)
+cmd/agent-keepalive/         the local server + CLI (serve, app, open, mcp, status, stop, update, metrics, version)
 cmd/agent-keepalive-hub/     the hub
 internal/
   model/                     shared types: Session, Activity, Plan, PingRecord, LedgerEntry, Settings, Event
@@ -25,6 +25,7 @@ internal/
   scheduler/                 the core: scan loop, plans, pings, verification, ledger segments, missed what-if
   api/                       HTTP API + WebSocket events + SPA serving + loopback guard
   app/                       wiring: Serve(ctx, Config) used by the CLI
+  mcp/                       the MCP server (`agent-keepalive mcp`): tools over the local API
   instance/                  data dir, port selection, single-instance lock, port file, find running
   distro/                    the link-time distribution profile (URLs, metrics default)
   config/                    runtime config: user file, admin file (locks), env overrides
@@ -123,7 +124,7 @@ These are requirements, each with a test:
 6. **Cold pings teach the TTL.** A cold ping lowers the learned TTL for that harness and model (stored, never below 5 minutes, at most halving), and the plan continues at the shorter interval. A second consecutive cold ping pauses the plan (`PlanPaused`, with the reason).
 7. **"Saved" needs a cache hit.** A return is booked as saved only when the returning call's `CacheRead` is at least 80% of the context before the gap; the avoided cost is computed from that `CacheRead`. Otherwise the segment is booked as wasted with `EndMissed`.
 8. **The ledger is durable and idempotent.** Open segments are rows. Closing a segment writes the ledger entry and updates the plan in one transaction; ledger entries are unique on `(plan_id, idle_from, ended_by)`. Restarts resume verification of unsettled pings and correct their cost.
-9. **Busy is bounded.** A session reported working for longer than 2 hours without new transcript activity, or whose transcript shows a new session start or resume, is treated as idle-but-stale: the plan shows `blocked` with the reason, and nothing is pinged until the transcript moves again.
+9. **Busy is bounded.** Claude Code's session registry says `idle`, `busy`, `waiting` (a permission prompt or a question) or `shell` (the turn ended, and shell commands it started still run). `idle` and `shell` count as idle, since no model calls keep the cache warm in either; everything else counts as working. A session reported working for longer than 2 hours without new transcript activity, or whose transcript shows a new session start or resume, is treated as idle-but-stale: the plan shows `blocked` with the reason, and nothing is pinged until the transcript moves again.
 10. **Wall-clock time only.** Times are taken with `time.Now().Round(0)` (no monotonic reading), so behaviour is the same before and after a restart. A jump of more than a minute between ticks (suspend, clock change) re-evaluates every plan's warm/cold state from the transcript before any ping.
 11. **One scheduler per user.** The instance lock is per user and per agent config directory, not per data directory, so two servers never ping the same sessions; a second server proxies to the first.
 12. **The ping text is fixed** (`model.PingText`). No API, setting or config changes it.

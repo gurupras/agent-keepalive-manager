@@ -44,7 +44,7 @@ func list() []Proc {
 			continue
 		}
 		name := windows.UTF16ToString(e.ExeFile[:])
-		p := Proc{PID: pid, Args: []string{name}, Start: startTime(pid)}
+		p := Proc{PID: pid, Args: []string{name}, Start: startTime(pid), PPID: int(e.ParentProcessID)}
 		if exe := imagePath(pid); exe != "" {
 			p.Exe = exe
 		}

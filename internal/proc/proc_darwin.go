@@ -37,7 +37,7 @@ func list() []Proc {
 			continue
 		}
 		t := k.Proc.P_starttime
-		p := Proc{PID: pid, Start: strconv.FormatInt(int64(t.Sec), 10) + "." + strconv.FormatInt(int64(t.Usec), 10)}
+		p := Proc{PID: pid, PPID: int(k.Eproc.Ppid), Start: strconv.FormatInt(int64(t.Sec), 10) + "." + strconv.FormatInt(int64(t.Usec), 10)}
 		if exe, args, _, ok := procArgs(pid); ok {
 			p.Exe, p.Args = exe, args
 		} else {

@@ -21,6 +21,7 @@ type Proc struct {
 	Exe   string   // absolute path of the executable, "" if unknown
 	Args  []string // argv; at least the program name when known
 	Start string   // opaque start-time token, see StartTime
+	PPID  int      // parent pid, 0 if unknown
 }
 
 // StartTime returns an opaque token for when pid started, or "" if no such
@@ -52,6 +53,30 @@ func List(names ...string) []Proc {
 		if want[baseName(p.Exe)] || (len(p.Args) > 0 && want[baseName(p.Args[0])]) {
 			out = append(out, p)
 		}
+	}
+	return out
+}
+
+// Ancestors returns pid's parent, its parent and so on, nearest first, as far
+// as the OS shows them (empty where it shows none).
+func Ancestors(pid int) []int { return AncestorsIn(Parents(), pid) }
+
+// Parents maps every visible pid to its parent pid.
+func Parents() map[int]int {
+	parent := map[int]int{}
+	for _, p := range list() {
+		parent[p.PID] = p.PPID
+	}
+	return parent
+}
+
+// AncestorsIn is Ancestors over a Parents map.
+func AncestorsIn(parent map[int]int, pid int) []int {
+	var out []int
+	seen := map[int]bool{pid: true}
+	for p := parent[pid]; p > 0 && !seen[p]; p = parent[p] {
+		seen[p] = true
+		out = append(out, p)
 	}
 	return out
 }
