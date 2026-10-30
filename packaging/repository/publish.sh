@@ -163,9 +163,10 @@ Types: deb
 URIs: ${url}/apt/current
 Suites: stable
 Components: main
+Architectures: amd64 arm64
 Signed-By: /usr/share/keyrings/agent-keepalive-archive-keyring.gpg
 EOF
-  echo "deb [signed-by=/usr/share/keyrings/agent-keepalive-archive-keyring.gpg] ${url}/apt/current stable main" \
+  echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/agent-keepalive-archive-keyring.gpg] ${url}/apt/current stable main" \
     > "${d}/agent-keepalive.list"
   cat > "${d}/agent-keepalive.repo" <<EOF
 [agent-keepalive]
