@@ -170,7 +170,7 @@ func (b *mcpBackend) client(ctx context.Context) (*client, error) {
 	if b.c != nil {
 		return b.c, nil
 	}
-	r, err := ensureServer(ctx, b.dir, b.port)
+	r, err := ensureServer(ctx, b.dir, b.port, nil)
 	if err != nil {
 		return nil, err
 	}

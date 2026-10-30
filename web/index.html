@@ -7,9 +7,12 @@
     <meta name="referrer" content="no-referrer" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <title>agent-keepalive</title>
+    <!-- The loader below, before the app's own styles load. A file, not inline: the CSP allows only 'self'. -->
+    <link rel="stylesheet" href="./boot.css" />
   </head>
   <body>
-    <div id="app"></div>
+    <!-- Shown until the app mounts over it, so the window is never blank. -->
+    <div id="app"><div class="ka-boot" role="status"><span class="ka-boot-spin"></span><p>Loading agent-keepalive…</p></div></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

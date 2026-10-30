@@ -6,6 +6,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import AboutDialog from './components/AboutDialog.vue'
 import SessionDrawer from './components/SessionDrawer.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
+import StartupScreen from './components/StartupScreen.vue'
 import StoppedScreen from './components/StoppedScreen.vue'
 import ToastHost from './components/ToastHost.vue'
 import { closeTopmost, searchInput, ui } from './composables/ui'
@@ -52,6 +53,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 <template>
   <StoppedScreen v-if="store.quit" />
+  <StartupScreen v-else-if="!store.loaded || store.startup?.ready === false" />
   <!-- Sized by its container, not the window, so it also folds up inside a
        narrow panel of another page. -->
   <div v-else class="@container/app relative flex h-full overflow-hidden">

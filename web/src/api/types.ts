@@ -230,9 +230,17 @@ export interface UpdateStatus {
   lastCheck?: string
 }
 
+/** What the server does before its first scan is in (GET api/startup). */
+export interface Startup {
+  ready: boolean
+  /** the step under way, e.g. "Reading Claude Code transcripts" */
+  step?: string
+}
+
 export interface Hello {
   version: string
   info: Info
+  startup?: Startup
 }
 
 /** One WebSocket frame (model.Event). */
@@ -245,7 +253,8 @@ export type ServerEvent =
   | { type: 'settings', data: Settings }
   | { type: 'update', data: UpdateStatus }
   | { type: 'metrics', data: MetricsStatus }
+  | { type: 'startup', data: Startup }
 
 export type EventType = ServerEvent['type']
 
-export const eventTypes: readonly EventType[] = ['hello', 'sessions', 'plan', 'ping', 'ledger', 'settings', 'update', 'metrics']
+export const eventTypes: readonly EventType[] = ['hello', 'sessions', 'plan', 'ping', 'ledger', 'settings', 'update', 'metrics', 'startup']

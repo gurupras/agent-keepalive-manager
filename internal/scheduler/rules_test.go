@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -805,5 +806,35 @@ func TestUsageCorrectedInPlace(t *testing.T) {
 	es := h.ledger()
 	if len(es) != 1 || es[0].Outcome != model.OutcomeSaved {
 		t.Fatalf("return = %+v", es)
+	}
+}
+
+func TestStartupSteps(t *testing.T) {
+	h := newHarness(t)
+	if st := h.svc.Startup(); st.Ready || st.Step == "" {
+		t.Fatalf("before the first scan: %+v", st)
+	}
+	events, cancel := h.svc.Subscribe()
+	defer cancel()
+	h.tick()
+	var steps []string
+	for len(events) > 0 {
+		if ev := <-events; ev.Type == "startup" {
+			st := ev.Data.(model.Startup)
+			steps = append(steps, fmt.Sprintf("%s/%v", st.Step, st.Ready))
+		}
+	}
+	want := "Reading Claude Code transcripts/false,Reading Codex sessions/false,/true"
+	if got := strings.Join(steps, ","); got != want {
+		t.Fatalf("steps %s", got)
+	}
+	if !h.svc.Startup().Ready {
+		t.Fatal("not ready after the first scan")
+	}
+	h.tick()
+	for len(events) > 0 {
+		if ev := <-events; ev.Type == "startup" {
+			t.Fatalf("startup event after ready: %+v", ev.Data)
+		}
 	}
 }

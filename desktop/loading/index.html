@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <title>agent-keepalive</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font: 13px system-ui, sans-serif; color: GrayText; background: Canvas; }
+      p { margin: 0; max-width: 32rem; padding: 0 24px; text-align: center; }
+      .spin { width: 28px; height: 28px; border-radius: 50%; border: 3px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; animation: spin 0.8s linear infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .failed .spin { display: none; }
+      .failed #status { color: CanvasText; font-weight: 600; }
+      #detail { white-space: pre-wrap; font: 12px ui-monospace, monospace; text-align: left; }
+    </style>
+  </head>
+  <body>
+    <!-- The window shows this at once; it reports each step of reaching
+         the server (kaStatus) and then opens the server's page. -->
+    <div class="spin"></div>
+    <p id="status" role="status" aria-live="polite">Starting agent-keepalive…</p>
+    <p id="detail"></p>
+    <script>
+      window.kaStatus = (text) => { document.getElementById('status').textContent = text + '…' }
+      window.kaError = (text, detail) => {
+        document.body.classList.add('failed')
+        document.getElementById('status').textContent = text
+        document.getElementById('detail').textContent = detail || ''
+      }
+    </script>
+  </body>
+</html>

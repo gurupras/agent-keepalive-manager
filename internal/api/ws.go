@@ -66,7 +66,7 @@ func (h *handler) ws(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		return c.Write(wctx, websocket.MessageText, b) == nil
 	}
-	if !send(model.Event{Type: "hello", Data: map[string]any{"version": h.opts.Info.Version, "info": h.opts.Info}}) ||
+	if !send(model.Event{Type: "hello", Data: map[string]any{"version": h.opts.Info.Version, "info": h.opts.Info, "startup": h.startupNow()}}) ||
 		!send(model.Event{Type: "sessions", Data: nonNil(h.opts.Service.Sessions())}) {
 		return
 	}

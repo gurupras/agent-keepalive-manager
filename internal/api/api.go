@@ -140,6 +140,7 @@ func New(opts Options) (http.Handler, error) {
 		route("PUT metrics", h.setMetrics)
 		route("GET metrics/preview", h.metricsPreview)
 		route("POST metrics/reset-id", h.metricsResetID)
+		route("GET startup", h.startup)
 		route("GET update", h.updateStatus)
 		route("POST update/check", h.updateCheck)
 		route("POST update/apply", h.updateApply)
@@ -415,6 +416,21 @@ func (h *handler) updateNow() apitypes.UpdateStatus {
 		return apitypes.UpdateStatus{Current: h.opts.Info.Version, State: apitypes.UpdateIdle}
 	}
 	return h.opts.Updater.Status()
+}
+
+// starter is a Service that reports its startup (the scheduler does).
+type starter interface{ Startup() model.Startup }
+
+// startupNow is the service's startup; one that does not report it is ready.
+func (h *handler) startupNow() model.Startup {
+	if s, ok := h.opts.Service.(starter); ok {
+		return s.Startup()
+	}
+	return model.Startup{Ready: true}
+}
+
+func (h *handler) startup(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.startupNow())
 }
 
 func (h *handler) updateStatus(w http.ResponseWriter, r *http.Request) {

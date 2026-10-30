@@ -56,8 +56,14 @@ func cmdOpen(args []string, stdout, stderr io.Writer) error {
 }
 
 // openUI is `open`: the running server's URL, printed and opened in a browser.
+// With noBrowser (the desktop window runs it so) it also reports its steps
+// on stderr as "status: <step>" lines, for the window to show.
 func openUI(dir string, port int, noBrowser bool, stdout, stderr io.Writer) error {
-	r, err := ensureServer(context.Background(), dir, port)
+	var step func(string)
+	if noBrowser {
+		step = func(s string) { fmt.Fprintf(stderr, "status: %s\n", s) }
+	}
+	r, err := ensureServer(context.Background(), dir, port, step)
 	if err != nil {
 		return err
 	}
@@ -72,8 +78,12 @@ func openUI(dir string, port int, noBrowser bool, stdout, stderr io.Writer) erro
 }
 
 // ensureServer returns the server for the data directory, starting one in
-// the background if none is running.
-func ensureServer(ctx context.Context, dir string, port int) (instance.Running, error) {
+// the background if none is running. step, if set, hears what it is doing.
+func ensureServer(ctx context.Context, dir string, port int, step func(string)) (instance.Running, error) {
+	if step == nil {
+		step = func(string) {}
+	}
+	step("Looking for the server")
 	if r, ok := instance.FindRunning(ctx, dir); ok {
 		return r, nil
 	}
@@ -89,6 +99,7 @@ func ensureServer(ctx context.Context, dir string, port int) (instance.Running, 
 	if r, ok := instance.FindRunning(ctx, dir); ok {
 		return r, nil
 	}
+	step("Starting the server")
 	return startBackground(ctx, dir, port)
 }
 

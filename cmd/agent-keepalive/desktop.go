@@ -51,16 +51,27 @@ func cmdApp(args []string, stdout, stderr io.Writer) error {
 	if shell == "" {
 		return openUI(dir, *port, false, stdout, stderr)
 	}
-	r, err := ensureServer(context.Background(), dir, *port)
-	if err != nil {
-		return err
+	// The window opens at once and starts the server itself (through
+	// `open --no-browser`), showing each step, so nobody stares at nothing.
+	// Only a server on a chosen port is started here first.
+	winArgs := []string{"--data-dir", dir}
+	if *port != 0 {
+		r, err := ensureServer(context.Background(), dir, *port, nil)
+		if err != nil {
+			return err
+		}
+		winArgs = append(winArgs, "--url", r.URL)
 	}
 	// The macOS window is an app bundle: Launch Services starts it, so it
 	// gets the Dock icon, the menu bar and focus. It finds the server itself.
 	if bundle := appBundle(shell); bundle != "" {
 		return exec.Command("open", "-a", bundle, "--args", "--data-dir", dir).Run()
 	}
-	cmd := exec.Command(shell, "--url", r.URL, "--data-dir", dir)
+	cmd := exec.Command(shell, winArgs...)
+	// The window runs this program, not whichever one it would find.
+	if exe, err := os.Executable(); err == nil {
+		cmd.Env = append(os.Environ(), "AGENT_KEEPALIVE_BIN="+exe)
+	}
 	// The window's messages go to our stderr when that is somewhere: not
 	// for a Windows GUI program started from the Start menu, which has none.
 	if f, ok := stderr.(*os.File); ok && f != nil {

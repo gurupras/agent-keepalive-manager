@@ -350,8 +350,15 @@ func DefaultSettings() Settings {
 }
 
 // Event is pushed to UI subscribers over the WebSocket.
+// Startup is what the server is doing before its first scan is in: the UI
+// shows Step until Ready (GET api/startup, `startup` events).
+type Startup struct {
+	Ready bool   `json:"ready"`
+	Step  string `json:"step,omitempty"`
+}
+
 type Event struct {
-	// Type is "sessions" | "plan" | "ping" | "ledger" | "settings" | "update" | "metrics".
+	// Type is "sessions" | "plan" | "ping" | "ledger" | "settings" | "update" | "metrics" | "startup".
 	Type string `json:"type"`
 	Data any    `json:"data"`
 }

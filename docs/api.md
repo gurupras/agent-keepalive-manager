@@ -25,6 +25,7 @@ The token is what keeps other local users and other programs out: the server bin
 |---|---|---|
 | `GET /api/health` | | `{name: "agent-keepalive", version, port}` — no token needed |
 | `GET /api/info` | | `Info` (below) |
+| `GET /api/startup` | | `{ready, step}`: until the first scan is in, `ready` is false and `step` says what the server is doing ("Reading Claude Code transcripts"); the UI shows it |
 | `GET /api/sessions` | | `SessionView[]` |
 | `GET /api/sessions/{key}` | | `SessionView` |
 | `POST /api/sessions/{key}/plan` | `{hours}` or `{indefinite: true}` | `Plan` (201) |
@@ -106,7 +107,8 @@ Text frames, one JSON `Event` (`{type, data}`) each, server → client:
 
 | `type` | `data` |
 |---|---|
-| `hello` | `{version, info: Info}` — first frame |
+| `hello` | `{version, info: Info, startup}` — first frame |
+| `startup` | `{ready, step}` — each step of the server's first scan, then `ready: true` once |
 | `sessions` | `SessionView[]` — full snapshot; sent right after `hello` and after every scan that changed anything |
 | `plan` | `Plan` |
 | `ping` | `PingRecord` |

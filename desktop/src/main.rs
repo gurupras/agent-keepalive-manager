@@ -1,10 +1,11 @@
 //! agent-keepalive-desktop: the agent-keepalive UI in a native window.
 //!
 //! The server is the `agent-keepalive` program; this window only shows the
-//! page it serves on 127.0.0.1. `agent-keepalive app` (what the desktop
-//! installs run by default) starts the server if needed and runs this with
-//! --url. Started without --url, as the macOS app bundle is, it runs
-//! `agent-keepalive open --no-browser` itself to get the URL.
+//! page it serves on 127.0.0.1. The window opens at once on a loading page
+//! of its own, which says what is happening. Given --url it opens that
+//! page; otherwise (what `agent-keepalive app` and the macOS app bundle
+//! do) it runs `agent-keepalive open --no-browser`, which starts the server
+//! if needed, reports its steps and prints the URL.
 //!
 //! Links to other sites open in the default browser. Closing the window
 //! leaves the server running; the window closes itself once the server has
@@ -12,14 +13,15 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tauri::webview::NewWindowResponse;
-use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const VERSION: &str = match option_env!("AGENT_KEEPALIVE_VERSION") {
     Some(v) => v,
@@ -104,18 +106,7 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let url = match args
-        .url
-        .clone()
-        .map_or_else(|| discover(args.data_dir.as_deref()), Ok)
-    {
-        Ok(u) => u,
-        Err(e) => {
-            eprintln!("agent-keepalive-desktop: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let url = match server_url(&url) {
+    let url = match args.url.as_deref().map(server_url).transpose() {
         Ok(u) => u,
         Err(e) => {
             eprintln!("agent-keepalive-desktop: {e}");
@@ -129,7 +120,7 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn run(url: Url, data_dir: Option<PathBuf>) -> tauri::Result<()> {
+fn run(url: Option<Url>, data_dir: Option<PathBuf>) -> tauri::Result<()> {
     tauri::Builder::default()
         // A second start (the menu entry clicked again) shows this window
         // and exits.
@@ -137,15 +128,19 @@ fn run(url: Url, data_dir: Option<PathBuf>) -> tauri::Result<()> {
             show(app)
         }))
         .setup(move |app| {
-            let origin = url.origin();
-            let nav_origin = origin.clone();
+            // The server's origin, once known: the window may go there.
+            let server: Arc<OnceLock<String>> = Arc::new(OnceLock::new());
+            let nav_server = server.clone();
             #[allow(unused_mut)]
-            let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url.clone()))
+            let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("agent-keepalive")
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(480.0, 400.0)
                 .on_navigation(move |u| {
-                    if u.origin() == nav_origin || u.as_str() == "about:blank" {
+                    if is_loading_page(u)
+                        || u.as_str() == "about:blank"
+                        || nav_server.get() == Some(&u.origin().ascii_serialization())
+                    {
                         return true;
                     }
                     open_external(u);
@@ -164,13 +159,58 @@ fn run(url: Url, data_dir: Option<PathBuf>) -> tauri::Result<()> {
             }
             #[cfg(target_os = "macos")]
             let _ = &data_dir;
-            b.build()?;
+            let window = b.build()?;
 
             let handle = app.handle().clone();
-            std::thread::spawn(move || watch(handle, url));
+            std::thread::spawn(move || {
+                let url = match url.map_or_else(|| discover(data_dir.as_deref(), &window), Ok) {
+                    Ok(u) => u,
+                    Err(e) => {
+                        eprintln!("agent-keepalive-desktop: {e}");
+                        call(&window, "kaError", &["agent-keepalive could not start", &e]);
+                        return;
+                    }
+                };
+                let _ = server.set(url.origin().ascii_serialization());
+                call(&window, "kaStatus", &["Loading"]);
+                let _ = window.navigate(url.clone());
+                watch(handle, url);
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
+}
+
+/// The window's own loading page (the app's assets).
+fn is_loading_page(u: &Url) -> bool {
+    u.scheme() == "tauri" || u.host_str() == Some("tauri.localhost")
+}
+
+/// Call a function of the loading page with string arguments.
+fn call(w: &WebviewWindow, f: &str, args: &[&str]) {
+    let args: Vec<String> = args.iter().map(|a| js_string(a)).collect();
+    let _ = w.eval(format!("window.{f} && window.{f}({})", args.join(", ")));
+}
+
+/// A JavaScript string literal for s.
+fn js_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '<' => out.push_str("\\u003c"),
+            c if (c as u32) < 0x20 || c == '\u{2028}' || c == '\u{2029}' => {
+                out.push_str(&format!("\\u{:04x}", c as u32))
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 fn show(app: &AppHandle) {
@@ -268,8 +308,9 @@ fn open_external(u: &Url) {
 }
 
 /// Start the server if it is not running and return its URL, by running
-/// `agent-keepalive open --no-browser`, which prints it.
-fn discover(data_dir: Option<&Path>) -> Result<String, String> {
+/// `agent-keepalive open --no-browser`, which prints it. The steps it
+/// reports on stderr ("status: ...") are shown on the loading page.
+fn discover(data_dir: Option<&Path>, w: &WebviewWindow) -> Result<Url, String> {
     let bin = server_binary()
         .ok_or("agent-keepalive is not installed (set AGENT_KEEPALIVE_BIN to it)")?;
     let mut cmd = Command::new(&bin);
@@ -284,22 +325,38 @@ fn discover(data_dir: Option<&Path>) -> Result<String, String> {
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = cmd
-        .output()
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = cmd
+        .spawn()
         .map_err(|e| format!("run {}: {e}", bin.display()))?;
-    if !out.status.success() {
-        return Err(format!(
-            "{} open: {}",
-            bin.display(),
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
+    let mut errors = String::new();
+    if let Some(stderr) = child.stderr.take() {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            match line.strip_prefix("status: ") {
+                Some(step) => call(w, "kaStatus", &[step]),
+                None => {
+                    errors.push_str(&line);
+                    errors.push('\n');
+                }
+            }
+        }
     }
-    String::from_utf8_lossy(&out.stdout)
+    let mut stdout = String::new();
+    if let Some(mut out) = child.stdout.take() {
+        let _ = out.read_to_string(&mut stdout);
+    }
+    let status = child
+        .wait()
+        .map_err(|e| format!("run {}: {e}", bin.display()))?;
+    if !status.success() {
+        return Err(format!("{} open: {}", bin.display(), errors.trim()));
+    }
+    let url = stdout
         .lines()
         .map(str::trim)
         .rfind(|l| !l.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| format!("{} open printed no URL", bin.display()))
+        .ok_or_else(|| format!("{} open printed no URL", bin.display()))?;
+    server_url(url)
 }
 
 /// Where the agent-keepalive program is: $AGENT_KEEPALIVE_BIN, next to this
@@ -361,6 +418,12 @@ mod tests {
         assert!(server_url("https://127.0.0.1:4344/").is_err());
         assert!(server_url("http://example.com:4344/").is_err());
         assert!(server_url("http://127.0.0.1/").is_err());
+    }
+
+    #[test]
+    fn js_strings() {
+        assert_eq!(js_string("a\"b\\c\nd</script>"), r#""a\"b\\c\nd\u003c/script>""#);
+        assert_eq!(js_string("\u{1}"), r#""\u0001""#);
     }
 
     #[test]

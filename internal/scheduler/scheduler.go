@@ -120,6 +120,7 @@ type Service struct {
 	sighted   map[string]bool // keys recorded in sightings for sightDay
 	sightDay  string
 	lastTick  time.Time
+	startup   model.Startup
 	lastSweep time.Time
 	views     []model.SessionView
 	viewsFP   string
@@ -153,6 +154,7 @@ func New(cfg Config) (*Service, error) {
 	}
 	s := &Service{
 		cfg: cfg, log: cfg.Log, clock: cfg.Now, alive: cfg.Alive,
+		startup:     model.Startup{Step: "Starting"},
 		sources:     map[model.Harness]model.Source{},
 		deliverers:  map[model.Harness]model.Deliverer{},
 		wake:        make(chan struct{}, 1),
@@ -278,6 +280,7 @@ func (s *Service) restore(ctx context.Context) error {
 // normal shutdown, once in-flight deliveries have finished.
 func (s *Service) Run(ctx context.Context) error {
 	defer s.deliveries.Wait()
+	s.setStep("Clearing leftover keepalive messages")
 	s.sweep(ctx)
 	for {
 		s.tick(ctx)
@@ -291,6 +294,33 @@ func (s *Service) Run(ctx context.Context) error {
 		case <-t.C:
 		}
 	}
+}
+
+// Startup reports what the server does before its first scan is in.
+func (s *Service) Startup() model.Startup {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.startup
+}
+
+func (s *Service) setStep(step string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.startup.Ready {
+		return
+	}
+	s.startup.Step = step
+	s.publish("startup", s.startup)
+}
+
+func readingStep(h model.Harness) string {
+	switch h {
+	case model.Claude:
+		return "Reading Claude Code transcripts"
+	case model.Codex:
+		return "Reading Codex sessions"
+	}
+	return "Reading " + string(h) + " sessions"
 }
 
 func (s *Service) scanEvery() time.Duration {
@@ -318,6 +348,9 @@ type scanResult struct {
 func (s *Service) tick(ctx context.Context) {
 	var results []scanResult
 	for _, src := range s.cfg.Sources {
+		if !s.Startup().Ready {
+			s.setStep(readingStep(src.Harness()))
+		}
 		ss, err := src.Scan(ctx)
 		if err != nil {
 			s.log.Warn("scheduler: scan failed", "harness", src.Harness(), "err", err)
@@ -349,6 +382,10 @@ func (s *Service) tick(ctx context.Context) {
 		s.persist(ctx, pr)
 	}
 	s.rebuildViews(now)
+	if !s.startup.Ready {
+		s.startup = model.Startup{Ready: true}
+		s.publish("startup", s.startup)
+	}
 	sweepDue := now.Sub(s.lastSweep) >= SweepEvery || now.Before(s.lastSweep)
 	s.mu.Unlock()
 

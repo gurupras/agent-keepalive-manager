@@ -449,3 +449,12 @@ func TestWebSocketPingTimeout(t *testing.T) {
 		t.Fatal("server kept a silent client")
 	}
 }
+
+func TestStartupRoute(t *testing.T) {
+	e := newEnv(t, nil)
+	w := e.do("GET", "/api/startup", "", nil)
+	wantStatus(t, w, 200)
+	if st := decodeBody[model.Startup](t, w); !st.Ready {
+		t.Fatalf("a service without a startup is ready: %+v", st)
+	}
+}

@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import type {
   Info, LedgerEntry, LedgerResponse, MetricsStatus, Missed, Plan, PingRecord,
-  ServerEvent, SessionView, Settings, Totals, UpdateStatus,
+  ServerEvent, SessionView, Settings, Startup, Totals, UpdateStatus,
 } from './types'
 import { ApiError, httpTransport, type LinkState, type Transport } from './transport'
 import { errorText, toast, toastError } from '../composables/toasts'
@@ -45,6 +45,8 @@ function initialState () {
     metrics: undefined as MetricsStatus | undefined,
     update: undefined as UpdateStatus | undefined,
     updatePhase: 'idle' as UpdatePhase,
+    /** the server's startup; undefined until known (older servers never say) */
+    startup: undefined as Startup | undefined,
     ledger: {
       range: (readStored<LedgerRange>('ledger-range') ?? '30d') as LedgerRange,
       entries: [] as LedgerEntry[],
@@ -180,13 +182,15 @@ async function loadOptional<T> (path: string): Promise<T | undefined> {
 /** refresh reloads everything; sessions also arrive over the WebSocket. */
 export async function refresh () {
   try {
-    const [sessions, settings, info, metrics, update] = await Promise.all([
+    const [sessions, settings, info, metrics, update, startup] = await Promise.all([
       transport.request<SessionView[] | null>('GET', 'sessions'),
       transport.request<Settings>('GET', 'settings'),
       loadOptional<Info>('info'),
       loadOptional<MetricsStatus>('metrics'),
       loadOptional<UpdateStatus>('update'),
+      loadOptional<Startup>('startup'),
     ])
+    if (startup) setStartup(startup)
     state.sessions = sessions ?? []
     state.settings = settings
     if (info) state.info = info
@@ -246,6 +250,19 @@ function onLedger (e: LedgerEntry) {
   if (e.outcome === 'saved') toast('success', `Saved ${money(e.net)}: ${e.title || titleOf(e.key)}`)
 }
 
+/** setStartup records the server's startup; once ready, the sessions are in. */
+function setStartup (s: Startup) {
+  const was = state.startup
+  state.startup = s
+  if (s.ready && was && !was.ready) loadSessions().catch(() => {})
+}
+
+/** loadStartup asks for the startup again, for when no WebSocket brings it. */
+export async function loadStartup () {
+  const s = await loadOptional<Startup>('startup')
+  if (s) setStartup(s)
+}
+
 function onHello (version: string, info: Info) {
   state.info = info
   const pending = readStored<{ from: string, to: string }>('pending-update')
@@ -267,7 +284,11 @@ function onHello (version: string, info: Info) {
 
 export function onEvent (e: ServerEvent) {
   switch (e.type) {
-    case 'hello': onHello(e.data.version, e.data.info); break
+    case 'hello':
+      onHello(e.data.version, e.data.info)
+      if (e.data.startup) setStartup(e.data.startup)
+      break
+    case 'startup': setStartup(e.data); break
     case 'sessions': state.sessions = e.data ?? []; break
     case 'plan': patchPlan(e.data); break
     case 'ping': onPing(e.data); break
