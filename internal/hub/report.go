@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gurupras/agent-keepalive-manager/internal/experiment"
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
@@ -271,6 +272,9 @@ const (
 	netTolerance = 0.01
 	// maxCallsPerPing is the most API calls one ping's reply may take.
 	maxCallsPerPing = 50
+	// maxEpisodes bounds the episodes of one report: those an install
+	// opened that day, plus those still open from the day before.
+	maxEpisodes = 2 * experiment.DailyEpisodes
 )
 
 // sqTolerance absorbs rounding in a sum of squares next to a sum of cost c:
@@ -326,6 +330,7 @@ func (r *Report) checkPlausible() error {
 			return invalid("%snetUsd: must be avoidedUsd minus pingCostUsd", pre)
 		}
 	}
+	episodes := 0
 	for i, e := range r.Experiments {
 		pre := fmt.Sprintf("experiments[%d].", i)
 		// costSqUsd sums the squares of non-negative episode costs, so it
@@ -335,6 +340,8 @@ func (r *Report) checkPlausible() error {
 		switch {
 		case e.Episodes < 1:
 			return invalid("%sepisodes: must be at least 1", pre)
+		case e.Episodes > maxEpisodes-episodes:
+			return invalid("experiments: more than %d episodes in all", maxEpisodes)
 		case e.Returned > e.Episodes:
 			return invalid("%sreturned: more than episodes", pre)
 		case e.Warm > e.Returned:
@@ -349,8 +356,10 @@ func (r *Report) checkPlausible() error {
 			return invalid("%squietMinutes: more than %d hours per episode", pre, maxPlanHours)
 		case e.PingCostUSD > float64(e.Pings)*maxPingCost+netTolerance:
 			return invalid("%spingCostUsd: more than $%v per ping", pre, maxPingCost)
-		case e.RewriteUSD > float64(e.ContextTokens)*maxWritePerMTok/1e6+netTolerance:
-			return invalid("%srewriteUsd: more than re-writing its context could cost", pre)
+		// rewriteUsd is what the returning call wrote, its context then: it
+		// may have grown past contextTokens, the context at the start.
+		case e.RewriteUSD > float64(e.Episodes)*maxEntryContext*maxWritePerMTok/1e6+netTolerance:
+			return invalid("%srewriteUsd: more than writing %d tokens per episode could cost", pre, maxEntryContext)
 		case math.Abs(e.CostUSD-(e.PingCostUSD+e.RewriteUSD)) > netTolerance:
 			return invalid("%scostUsd: must be pingCostUsd plus rewriteUsd", pre)
 		case e.CostSqUSD < c2/float64(e.Episodes)-sqTolerance(e.CostUSD):
@@ -358,6 +367,7 @@ func (r *Report) checkPlausible() error {
 		case e.CostSqUSD > c2+sqTolerance(e.CostUSD):
 			return invalid("%scostSqUsd: more than costUsd²", pre)
 		}
+		episodes += e.Episodes
 	}
 	return nil
 }

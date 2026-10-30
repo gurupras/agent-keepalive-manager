@@ -1,20 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Experiment } from '../api.ts'
-import { count, decimal, money, percent } from '../format.ts'
+import { count, decimal, moneyFine as money, percent } from '../format.ts'
 
 const props = defineProps<{ experiment: Experiment }>()
 
 const ARM_LABELS = { hold: 'Hold (control)', ping: 'Ping (treatment)' } as const
 
-// The 95% interval of a mean is 1.96 standard errors either side.
-const Z95 = 1.96
-
 // The verdict says which arm is cheaper per episode, but only once the 95%
 // interval of the difference excludes zero.
 const verdict = computed(() => {
   const d = props.experiment.diff
-  if (!d) return { text: 'Not enough episodes yet: each arm needs at least 2.', tone: 'text-text-3' }
+  if (!d) return { text: 'Not enough episodes yet: each arm needs at least 10.', tone: 'text-text-3' }
   if (!d.significant) {
     return {
       text: `No clear difference yet: ping ${signed(d.meanCostUsd)} per episode (95% CI ${signed(d.ciLowUsd)} to ${signed(d.ciHighUsd)}).`,
@@ -49,7 +46,7 @@ function signed (v: number): string {
             <th scope="col" class="px-2 py-2 text-right font-medium">Installs</th>
             <th scope="col" class="px-2 py-2 text-right font-medium">Warm rate</th>
             <th scope="col" class="px-2 py-2 text-right font-medium">Pings / episode</th>
-            <th scope="col" class="px-4 py-2 text-right font-medium">Mean cost ± 95%</th>
+            <th scope="col" class="px-4 py-2 text-right font-medium">Mean cost ± SE</th>
           </tr>
         </thead>
         <tbody>
@@ -63,7 +60,7 @@ function signed (v: number): string {
             <td class="px-2 py-2 text-right">{{ decimal(a.pingsPerEpisode) }}</td>
             <td class="px-4 py-2 text-right font-medium text-text-0">
               {{ money(a.meanCostUsd) }}
-              <span class="font-normal text-text-3">± {{ money(Z95 * a.seCostUsd) }}</span>
+              <span class="font-normal text-text-3">± {{ money(a.seCostUsd) }}</span>
             </td>
           </tr>
         </tbody>

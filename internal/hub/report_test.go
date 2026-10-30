@@ -176,10 +176,22 @@ func TestDecodeReportExperimentRules(t *testing.T) {
 			e := exp0(r)
 			e["pingCostUsd"], e["costUsd"], e["costSqUsd"] = 126.0, 127.2, 10000.0
 		}, field: "experiments[0].pingCostUsd"},
-		{name: "rewrite over context", mutate: func(r map[string]any) {
+		{name: "rewrite past context at start", mutate: func(r map[string]any) {
 			e := exp0(r)
 			e["contextTokens"], e["costSqUsd"] = 10000, 1.61
+		}, ok: true},
+		{name: "rewrite over bound", mutate: func(r map[string]any) {
+			e := exp0(r)
+			e["rewriteUsd"], e["costUsd"], e["costSqUsd"] = 3001.0, 3001.35, 3001.35*3001.35
 		}, field: "experiments[0].rewriteUsd"},
+		{name: "too many episodes", mutate: func(r map[string]any) {
+			e := exp0(r)
+			e["episodes"] = 99
+		}, field: "experiments: more than 100 episodes"},
+		{name: "episodes at bound", mutate: func(r map[string]any) {
+			e := exp0(r)
+			e["episodes"] = 98
+		}, ok: true},
 		{name: "cost mismatch", mutate: func(r map[string]any) { exp0(r)["costUsd"] = 1.6 }, field: "experiments[0].costUsd"},
 		{name: "cost rounding", mutate: func(r map[string]any) { exp0(r)["costUsd"] = 1.555 }, ok: true},
 		{name: "costSq at lower bound", mutate: func(r map[string]any) { exp1(r)["costSqUsd"] = 2.205 }, ok: true},

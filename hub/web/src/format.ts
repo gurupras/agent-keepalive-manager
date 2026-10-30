@@ -9,6 +9,14 @@ export function money (v: number): string {
   return Math.abs(v) >= 100_000 ? usdCompact.format(v) : usd.format(v)
 }
 
+// usdFine shows sub-dollar amounts, such as one episode's cost, to a
+// hundredth of a cent.
+const usdFine = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 })
+
+export function moneyFine (v: number): string {
+  return Math.abs(v) < 1 ? usdFine.format(v) : money(v)
+}
+
 export function count (v: number): string {
   return Math.abs(v) >= 100_000 ? compact.format(v) : int.format(v)
 }

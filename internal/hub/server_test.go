@@ -416,7 +416,7 @@ func TestExperimentsAPI(t *testing.T) {
 	}
 	e := body.Experiments[0]
 	if e.Experiment != "busy-ping-subagents-1" || len(e.Arms) != 2 || e.Arms[0].Arm != "hold" || e.Arms[1].Arm != "ping" ||
-		e.Arms[1].Episodes != 3 || !near(e.Arms[1].WarmRate, 2.0/3) || !near(e.Arms[0].MeanCostUSD, 1.05) || e.Diff == nil {
+		e.Arms[1].Episodes != 3 || !near(e.Arms[1].WarmRate, 2.0/3) || !near(e.Arms[0].MeanCostUSD, 1.05) || e.Diff != nil {
 		t.Fatalf("experiment: %+v", e)
 	}
 	// The JSON keys are the documented ones.
@@ -437,12 +437,9 @@ func TestExperimentsAPI(t *testing.T) {
 			t.Errorf("arm lacks %s", k)
 		}
 	}
-	var diff map[string]any
-	json.Unmarshal(raw.Experiments[0]["diff"], &diff)
-	for _, k := range []string{"meanCostUsd", "ciLowUsd", "ciHighUsd", "significant"} {
-		if _, ok := diff[k]; !ok {
-			t.Errorf("diff lacks %s", k)
-		}
+	// Too few episodes to compare: diff is null, not absent.
+	if d, ok := raw.Experiments[0]["diff"]; !ok || string(d) != "null" {
+		t.Errorf("diff %s", d)
 	}
 
 	// A range without the schema 2 day has none.

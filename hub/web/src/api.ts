@@ -66,7 +66,7 @@ export interface Experiment {
   experiment: string
   /** hold first, then ping; an arm without episodes is absent. */
   arms: ExperimentArm[]
-  /** null while either arm has fewer than 2 episodes. */
+  /** null while either arm has fewer than 10 episodes. */
   diff: ExperimentDiff | null
 }
 

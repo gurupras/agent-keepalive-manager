@@ -739,15 +739,39 @@ type ExperimentDiff struct {
 }
 
 // Experiment is one experiment's arms (hold first) and their difference,
-// nil while either arm has fewer than 2 episodes.
+// nil while either arm has fewer than minArmEpisodes episodes.
 type Experiment struct {
 	Experiment string          `json:"experiment"`
 	Arms       []ExperimentArm `json:"arms"`
 	Diff       *ExperimentDiff `json:"diff"`
 }
 
-// z95 is the normal quantile of a two-sided 95% interval.
-const z95 = 1.96
+// minArmEpisodes is the fewest episodes an arm needs before the arms are
+// compared: with fewer, the spread of costs is too poorly known.
+const minArmEpisodes = 10
+
+// t975 holds Student's t quantile of a two-sided 95% interval for 1..30
+// degrees of freedom.
+var t975 = [...]float64{12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228,
+	2.201, 2.179, 2.160, 2.145, 2.131, 2.120, 2.110, 2.101, 2.093, 2.086,
+	2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042}
+
+// tQuantile95 is Student's t quantile of a two-sided 95% interval for df
+// degrees of freedom, rounded down to a whole number (so the interval errs
+// wide). Past 30 it uses the Cornish-Fisher expansion around the normal
+// quantile, good to 1e-4 there.
+func tQuantile95(df float64) float64 {
+	n := math.Floor(df)
+	if n < 1 {
+		n = 1
+	}
+	if n <= float64(len(t975)) {
+		return t975[int(n)-1]
+	}
+	const z = 1.959964
+	z3, z5, z7 := z*z*z, math.Pow(z, 5), math.Pow(z, 7)
+	return z + (z3+z)/(4*n) + (5*z5+16*z3+3*z)/(96*n*n) + (3*z7+19*z5+17*z3-15*z)/(384*n*n*n)
+}
 
 // Experiments returns every experiment with episodes in rg, by id.
 func (s *Store) Experiments(ctx context.Context, rg Range) ([]Experiment, error) {
@@ -817,15 +841,22 @@ func meanSE(n int64, sum, sumSq float64) (mean, se float64) {
 
 // experimentDiff compares the arms' mean episode costs with Welch's
 // interval, ping minus hold, or returns nil when either arm has fewer than
-// 2 episodes. Episodes are treated as independent, though those of one
+// minArmEpisodes episodes. Episodes are treated as independent, though those of one
 // install are correlated (its sessions, models and habits): the interval is
 // narrower than it should be when a few installs supply most episodes.
 func experimentDiff(hold, ping ExperimentArm) *ExperimentDiff {
-	if hold.Episodes < 2 || ping.Episodes < 2 {
+	if hold.Episodes < minArmEpisodes || ping.Episodes < minArmEpisodes {
 		return nil
 	}
 	d := ping.MeanCostUSD - hold.MeanCostUSD
-	half := z95 * math.Sqrt(hold.SECostUSD*hold.SECostUSD+ping.SECostUSD*ping.SECostUSD)
+	vh, vp := hold.SECostUSD*hold.SECostUSD, ping.SECostUSD*ping.SECostUSD
+	// Welch–Satterthwaite degrees of freedom; when neither arm varies, the
+	// pooled count.
+	df := float64(hold.Episodes + ping.Episodes - 2)
+	if v := vh + vp; v > 0 {
+		df = v * v / (vh*vh/float64(hold.Episodes-1) + vp*vp/float64(ping.Episodes-1))
+	}
+	half := tQuantile95(df) * math.Sqrt(vh+vp)
 	return &ExperimentDiff{
 		MeanCostUSD: d,
 		CILowUSD:    d - half,

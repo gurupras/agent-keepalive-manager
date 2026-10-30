@@ -533,7 +533,7 @@ func TestExperiments(t *testing.T) {
 		// Hold episodes cost 0.5, 2.5, 3, 4 and ping ones 0.5, 0.5, 1, 1,
 		// over two installs and days. Hold: mean 2.5, var (31.5 - 100/4)/3
 		// = 6.5/3, se² = 6.5/12. Ping: mean 0.75, var (2.5 - 9/4)/3 = 1/12,
-		// se² = 1/48. diff = -1.75 ± 1.96·√(27/48) = -1.75 ± 1.47.
+		// se² = 1/48. Four episodes an arm are too few to compare.
 		for _, r := range []*Report{
 			mkReport2(idA, "2026-10-20", expSum("busy-1", "hold", 0.5, 2.5), expSum("busy-1", "ping", 0.5, 0.5),
 				expSum("lone-1", "hold", 1, 1), expSum("lone-1", "ping", 2)),
@@ -568,25 +568,12 @@ func TestExperiments(t *testing.T) {
 			!near(ping.MeanCostUSD, 0.75) || !near(ping.SECostUSD, math.Sqrt(1.0/48)) || !near(ping.PingsPerEpisode, 2) {
 			t.Fatalf("ping: %+v", ping)
 		}
-		half := 1.96 * math.Sqrt(27.0/48)
-		if d := e.Diff; d == nil || !near(d.MeanCostUSD, -1.75) || !near(d.CILowUSD, -1.75-half) ||
-			!near(d.CIHighUSD, -1.75+half) || !d.Significant {
-			t.Fatalf("diff: %+v", e.Diff)
+		if e.Diff != nil {
+			t.Fatalf("diff with %d and %d episodes: %+v", hold.Episodes, ping.Episodes, e.Diff)
 		}
 		// lone-1's ping arm has one episode: no difference yet.
 		if exps[1].Diff != nil || len(exps[1].Arms) != 2 || exps[1].Arms[1].SECostUSD != 0 {
 			t.Fatalf("lone-1: %+v", exps[1])
-		}
-
-		// Only idA's day: two episodes an arm, too spread to tell apart.
-		exps, err = s.Experiments(ctx, Range{From: "2026-10-20", To: "2026-10-20"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Hold 0.5, 2.5: mean 1.5, var 2, se 1. Ping 0.5, 0.5: mean 0.5,
-		// se 0. diff = -1 ± 1.96, which spans 0.
-		if d := exps[0].Diff; d == nil || !near(d.MeanCostUSD, -1) || !near(d.CIHighUSD, 0.96) || d.Significant {
-			t.Fatalf("one day: %+v", exps[0].Diff)
 		}
 
 		// Established installs only: idA and idB have one report each.
@@ -676,4 +663,34 @@ func TestSummaryRobust(t *testing.T) {
 			t.Fatalf("robust: %+v", sum)
 		}
 	})
+}
+
+func TestExperimentDiff(t *testing.T) {
+	arm := func(n int64, mean, se2 float64) ExperimentArm {
+		return ExperimentArm{Episodes: n, MeanCostUSD: mean, SECostUSD: math.Sqrt(se2)}
+	}
+	// df = 0.07² / (0.05²/9 + 0.02²/11) = 15.6, so t(15) = 2.131.
+	d := experimentDiff(arm(10, 2.5, 0.05), arm(12, 0.75, 0.02))
+	half := 2.131 * math.Sqrt(0.07)
+	if d == nil || !near(d.MeanCostUSD, -1.75) || !near(d.CILowUSD, -1.75-half) || !near(d.CIHighUSD, -1.75+half) ||
+		!d.Significant {
+		t.Fatalf("diff %+v", d)
+	}
+	// Wide spread: the interval spans 0.
+	if d := experimentDiff(arm(10, 1, 4), arm(10, 0.5, 4)); d == nil || d.Significant {
+		t.Fatalf("spread %+v", d)
+	}
+	// Neither arm varies: a point, significant only away from 0.
+	if d := experimentDiff(arm(10, 1, 0), arm(10, 1, 0)); d == nil || d.CILowUSD != 0 || d.CIHighUSD != 0 || d.Significant {
+		t.Fatalf("no spread %+v", d)
+	}
+	if d := experimentDiff(arm(9, 1, 1), arm(10, 1, 1)); d != nil {
+		t.Fatalf("9 episodes compared: %+v", d)
+	}
+	for _, c := range []struct{ df, want float64 }{{0.4, 12.706}, {1, 12.706}, {15.9, 2.131}, {30, 2.042},
+		{60, 2.000}, {120, 1.980}, {1e9, 1.960}} {
+		if got := tQuantile95(c.df); math.Abs(got-c.want) > 5e-4 {
+			t.Errorf("t(%v) = %v; want %v", c.df, got, c.want)
+		}
+	}
 }
