@@ -54,6 +54,13 @@ type Config struct {
 	// api/quit). NoUpdate turns self-update off alone.
 	Supervised bool
 	NoUpdate   bool
+	// IdleExit stops the server once it has gone this long unused with no
+	// active plan (0: never; ignored when Supervised). Use is any request
+	// but api/health and a passive WebSocket (api/ws?passive=1); an open
+	// WebSocket is not use in itself.
+	IdleExit time.Duration
+	// IdleCheck is how often IdleExit is checked (1 min).
+	IdleCheck time.Duration
 	// Profile defaults to distro.Current(); InstallKind to the detected one.
 	Profile     *distro.Profile
 	InstallKind string
@@ -242,6 +249,41 @@ type server struct {
 	core   *Core
 	coreMu sync.Mutex
 	cancel context.CancelFunc // of the core's loops
+
+	lastUse atomic.Int64 // unix nanoseconds of the latest request that counts as use
+}
+
+// noteUse records a request as use of the server (see Config.IdleExit).
+func (s *server) noteUse(r *http.Request) {
+	switch r.URL.Path {
+	case "/api/health":
+		return
+	case "/api/ws":
+		if r.URL.Query().Get("passive") == "1" {
+			return
+		}
+	}
+	s.lastUse.Store(time.Now().UnixNano())
+}
+
+// idle reports whether the server has gone IdleExit unused while no plan
+// keeps a session warm. A proxying server has no plans of its own.
+func (s *server) idle(now time.Time) bool {
+	if now.Sub(time.Unix(0, s.lastUse.Load())) < s.cfg.IdleExit {
+		return false
+	}
+	s.coreMu.Lock()
+	core := s.core
+	s.coreMu.Unlock()
+	if core == nil {
+		return true
+	}
+	for _, v := range core.Service.Sessions() {
+		if v.Plan != nil && v.Plan.State == model.PlanActive {
+			return false
+		}
+	}
+	return true
 }
 
 // tryLock takes the scheduler lock if it is free; it reports whether we
@@ -306,6 +348,7 @@ func (s *server) run(ctx context.Context, ln net.Listener) error {
 	defer cancelBase()
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s.noteUse(r)
 			(*s.handler.Load()).ServeHTTP(w, r)
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -334,6 +377,17 @@ func (s *server) run(ctx context.Context, ln net.Listener) error {
 
 	retry := time.NewTicker(s.cfg.RetryLock)
 	defer retry.Stop()
+	s.lastUse.Store(time.Now().UnixNano())
+	var idleTick <-chan time.Time
+	if s.cfg.IdleExit > 0 && !s.cfg.Supervised {
+		every := s.cfg.IdleCheck
+		if every <= 0 {
+			every = time.Minute
+		}
+		t := time.NewTicker(every)
+		defer t.Stop()
+		idleTick = t.C
+	}
 	var runErr error
 loop:
 	for {
@@ -345,6 +399,11 @@ loop:
 		case err := <-serveErr:
 			runErr = err
 			break loop
+		case now := <-idleTick:
+			if s.idle(now) {
+				s.log.Info("unused with no active plan; stopping", "after", s.cfg.IdleExit)
+				break loop
+			}
 		case <-retry.C:
 			if s.holdsLock() || !s.tryLock() {
 				continue

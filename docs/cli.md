@@ -37,6 +37,9 @@ Every command takes `--data-dir`, and finds the running server through it.
 | `--ui-addon DIR` | A directory served under `addon/`; its `addon.css` and `addon.js` are linked into the UI. |
 | `--supervised` | Run under another program: no self-update, and no Quit in the UI. |
 | `--exit-on-stdin-eof` | Stop when standard input closes, for a supervising program. |
+| `--idle-exit DURATION` | Stop after this long unused while no plan is active, for example `30m`. Use is any request except health checks and the MCP server's passive subscription; an open window or tab that makes no requests is not use. Ignored with `--supervised`. Default: never. |
+
+`app`, `open` and `mcp` start their background server with `--idle-exit 30m`, and start it again when next needed. A server you run with `serve`, or as the systemd user service, runs until you stop it.
 
 ### `app` flags
 

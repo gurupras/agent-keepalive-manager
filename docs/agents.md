@@ -8,6 +8,8 @@ The server does the tracking; the MCP server only asks it. The first tool call f
 
 After its first call, each agent's MCP server follows the server's WebSocket, which pushes the session list whenever a scan changes it. Tool calls answer from that copy in about a millisecond, and `wait_for_agents` wakes on the push instead of polling. Process ancestry is read once per process. If the user stops the server, the MCP servers do not restart it until a tool call needs it.
 
+A server started this way stops by itself once it has gone 30 minutes unused while no plan is active. The MCP servers' subscriptions do not count as use, so a swarm of idle agents with nothing kept warm does not hold it up; their next tool call starts it again.
+
 ## Setting it up
 
 Claude Code, for every project:

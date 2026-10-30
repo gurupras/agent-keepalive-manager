@@ -24,10 +24,14 @@ import (
 type fakeService struct {
 	model.Service // unimplemented methods panic
 	name          string
+	mu            sync.Mutex
+	plan          *model.Plan
 }
 
 func (f *fakeService) Sessions() []model.SessionView {
-	return []model.SessionView{{Session: model.Session{Key: "claude:" + f.name}}}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return []model.SessionView{{Session: model.Session{Key: "claude:" + f.name}, Plan: f.plan}}
 }
 
 func (f *fakeService) Subscribe() (<-chan model.Event, func()) {
@@ -58,6 +62,7 @@ type running struct {
 	ran     int
 	closed  int
 	restart apitypes.RestartFunc
+	svc     *fakeService
 }
 
 func (w world) start(t *testing.T, name string, mod func(*Config)) *running {
@@ -74,12 +79,14 @@ func (w world) start(t *testing.T, name string, mod func(*Config)) *running {
 		RetryLock: 50 * time.Millisecond,
 		Ready:     func(rd Ready) { readyCh <- rd },
 		Build: func(ctx context.Context, d CoreDeps) (*Core, error) {
+			svc := &fakeService{name: name}
 			r.mu.Lock()
 			r.built++
 			r.restart = d.Restart
+			r.svc = svc
 			r.mu.Unlock()
 			return &Core{
-				Service: &fakeService{name: name},
+				Service: svc,
 				Run: []func(context.Context){func(ctx context.Context) {
 					r.mu.Lock()
 					r.ran++
@@ -318,5 +325,90 @@ func TestFrameAncestors(t *testing.T) {
 	resp.Body.Close()
 	if csp := resp.Header.Get("Content-Security-Policy"); !strings.HasSuffix(csp, "frame-ancestors https://host.example") || resp.Header.Get("X-Frame-Options") != "" {
 		t.Fatalf("%q %v", csp, resp.Header)
+	}
+}
+
+func TestIdleExit(t *testing.T) {
+	w := newWorld(t)
+	r := w.start(t, "a", func(c *Config) { c.IdleExit, c.IdleCheck = 300*time.Millisecond, 20*time.Millisecond })
+	token, _ := instance.ReadToken(r.dataDir)
+	r.mu.Lock()
+	svc := r.svc
+	r.mu.Unlock()
+	svc.mu.Lock()
+	svc.plan = &model.Plan{State: model.PlanActive}
+	svc.mu.Unlock()
+
+	running := func(d time.Duration, during func()) bool {
+		t.Helper()
+		end := time.Now().Add(d)
+		for time.Now().Before(end) {
+			select {
+			case <-r.done:
+				return false
+			case <-time.After(50 * time.Millisecond):
+			}
+			if during != nil {
+				during()
+			}
+		}
+		return true
+	}
+	// An active plan keeps it running, unused.
+	if !running(700*time.Millisecond, nil) {
+		t.Fatal("stopped while a plan was active")
+	}
+	// Without one, use keeps it running...
+	get(t, r.ready.URL+"api/info", token)
+	svc.mu.Lock()
+	svc.plan = &model.Plan{State: model.PlanPaused}
+	svc.mu.Unlock()
+	if !running(700*time.Millisecond, func() { get(t, r.ready.URL+"api/info", token) }) {
+		t.Fatal("stopped while in use")
+	}
+	// ...and health checks are not use: it stops.
+	health := func() {
+		if resp, err := http.Get(r.ready.URL + "api/health"); err == nil {
+			resp.Body.Close()
+		}
+	}
+	if running(3*time.Second, health) {
+		t.Fatal("did not stop when unused")
+	}
+	if err := r.wait(t); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIdleExitOffWhenSupervised(t *testing.T) {
+	w := newWorld(t)
+	r := w.start(t, "a", func(c *Config) {
+		c.IdleExit, c.IdleCheck, c.Supervised = 50*time.Millisecond, 10*time.Millisecond, true
+	})
+	select {
+	case <-r.done:
+		t.Fatal("a supervised server stopped for being idle")
+	case <-time.After(400 * time.Millisecond):
+	}
+}
+
+func TestNoteUse(t *testing.T) {
+	s := &server{}
+	for _, c := range []struct {
+		url  string
+		used bool
+	}{
+		{"/api/health", false},
+		{"/api/ws?passive=1&token=x", false},
+		{"/api/ws?token=x", true},
+		{"/api/sessions", true},
+		{"/", true},
+	} {
+		s.lastUse.Store(0)
+		r, _ := http.NewRequest("GET", "http://127.0.0.1"+c.url, nil)
+		s.noteUse(r)
+		if got := s.lastUse.Load() != 0; got != c.used {
+			t.Errorf("%s: use %v, want %v", c.url, got, c.used)
+		}
 	}
 }

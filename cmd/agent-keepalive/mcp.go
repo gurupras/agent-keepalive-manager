@@ -101,6 +101,8 @@ func (b *mcpBackend) stale() {
 }
 
 // follow keeps a WebSocket to the server open for the life of the process.
+// The socket is passive: it does not count as use, so a server started in
+// the background can still stop once idle (serve --idle-exit).
 // It never starts a server: if the user stopped it, it stays stopped until
 // a tool call needs it.
 func (b *mcpBackend) follow() {
@@ -131,7 +133,7 @@ func (b *mcpBackend) subscribe(ctx context.Context) {
 		return
 	}
 	dctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	c, _, err := websocket.Dial(dctx, "ws"+strings.TrimPrefix(r.URL, "http")+"api/ws",
+	c, _, err := websocket.Dial(dctx, "ws"+strings.TrimPrefix(r.URL, "http")+"api/ws?passive=1",
 		&websocket.DialOptions{HTTPHeader: http.Header{api.TokenHeader: {tok}}})
 	cancel()
 	if err != nil {

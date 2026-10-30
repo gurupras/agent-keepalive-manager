@@ -162,6 +162,7 @@ func cmdServe(args []string, stderr io.Writer) error {
 	stdinEOF := fs.Bool("exit-on-stdin-eof", false, "stop when standard input closes (for a supervising program)")
 	noUpdate := fs.Bool("no-update", false, "turn self-update off")
 	supervised := fs.Bool("supervised", false, "run under another program: no self-update, no quit from the UI")
+	idleExit := fs.Duration("idle-exit", 0, "stop after this long unused with no active plan (default: never)")
 	if err := fs.Parse(args); err != nil {
 		return errUsage
 	}
@@ -209,7 +210,7 @@ func cmdServe(args []string, stderr io.Writer) error {
 
 	cfg := app.Config{
 		Version: version, DataDir: dir, Port: *port, PricingPath: *pricingPath,
-		UI: web.UI(), UIAddon: *addon, FrameAncestors: *frames, Supervised: *supervised, NoUpdate: *noUpdate,
+		UI: web.UI(), UIAddon: *addon, FrameAncestors: *frames, Supervised: *supervised, NoUpdate: *noUpdate, IdleExit: *idleExit,
 		InstallKind: app.InstallKind(), Log: log,
 	}
 	if relaunched {

@@ -20,6 +20,11 @@ import (
 // LogFile is where a background server logs, in the data directory.
 const LogFile = "server.log"
 
+// BackgroundIdleExit is how long a server started in the background (by
+// app, open or mcp) runs unused with no active plan before it stops. The
+// next of those commands starts it again.
+const BackgroundIdleExit = 30 * time.Minute
+
 // notRunningError: the command needs a running server (exit status 3).
 type notRunningError struct{ dataDir string }
 
@@ -105,7 +110,7 @@ func startBackground(ctx context.Context, dir string, port int) (instance.Runnin
 	}
 	defer logf.Close()
 	fmt.Fprintf(logf, "--- %s starting server\n", time.Now().Format(time.RFC3339))
-	args := []string{"serve", "--data-dir", dir}
+	args := []string{"serve", "--data-dir", dir, "--idle-exit", BackgroundIdleExit.String()}
 	if port != 0 {
 		args = append(args, "--port", strconv.Itoa(port))
 	}

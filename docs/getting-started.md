@@ -16,7 +16,7 @@ Install it for your platform ([Installing](/install)), then:
 agent-keepalive
 ```
 
-This starts the server in the background if it is not already running and opens the agent-keepalive window. The desktop entry, the Start-menu shortcut and the macOS app do the same thing. The server listens on `127.0.0.1` only, on port 4344 or the next free one, and keeps running when you close the window; **Quit** in the window's menu stops it.
+This starts the server in the background if it is not already running and opens the agent-keepalive window. The desktop entry, the Start-menu shortcut and the macOS app do the same thing. The server listens on `127.0.0.1` only, on port 4344 or the next free one, and keeps running when you close the window, so plans go on while you are away. **Quit** in the window's menu stops it, and it stops by itself once it has gone 30 minutes unused with no active plan; opening the window starts it again.
 
 Prefer a browser? `agent-keepalive open` starts the server the same way and opens the UI in your browser instead. `agent-keepalive serve` runs only the server, in the foreground. The `.tar.gz`/`.zip` archives and Homebrew have no window: there, `agent-keepalive` runs `serve`, and `agent-keepalive open` is how you open the UI.
 

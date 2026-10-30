@@ -44,7 +44,7 @@ A `.deb`, `.rpm` or Arch package installed from the download page registers the 
 agent-keepalive
 ```
 
-opens the agent-keepalive window, starting the server in the background if it is not running (the desktop entry, Start-menu shortcut and macOS app do the same). Pick a session, choose how long to keep it warm, and leave. Closing the window leaves the server running; **Quit** in its menu stops it.
+opens the agent-keepalive window, starting the server in the background if it is not running (the desktop entry, Start-menu shortcut and macOS app do the same). Pick a session, choose how long to keep it warm, and leave. Closing the window leaves the server running; **Quit** in its menu stops it, and it stops by itself after 30 minutes unused while nothing is kept warm.
 
 Without the window:
 
