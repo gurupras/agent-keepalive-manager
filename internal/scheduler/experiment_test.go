@@ -135,7 +135,7 @@ func TestExperimentBudget(t *testing.T) {
 	h := newHarness(t)
 	h.exp = true
 	h.addSession(key, 100)
-	h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusWorking, model.QuietOther })
+	h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusWorking, model.QuietSubagents })
 	h.tickAt(time.Minute)
 	must(t)(h.svc.StartPlan(bg, key, 4))
 	h.svc.mu.Lock()
@@ -268,5 +268,39 @@ func TestExperimentNoneMidTurn(t *testing.T) {
 	h.tickAt(55 * time.Minute)
 	if v, _ := h.svc.Session(key); v.Experiment != nil || h.del.count() != 0 {
 		t.Fatalf("episode %+v, pings %d for a session mid-turn", v.Experiment, h.del.count())
+	}
+}
+
+// A failed treatment leaves nothing behind that fails the plan once the
+// session stops working (the user presses Esc while the cache is cold).
+func TestExperimentFailedTreatmentThenIdle(t *testing.T) {
+	for _, arm := range []string{model.ArmHold, model.ArmPing} {
+		t.Run(arm, func(t *testing.T) {
+			h := quietHarness(t, arm)
+			h.del.setErr(errors.New("busy"))
+			for m := 50; m < 60; m++ {
+				h.tickAt(time.Duration(m) * time.Minute)
+			}
+			h.del.setErr(nil)
+			h.src.edit(key, func(s *model.Session) { s.Status, s.Quiet = model.StatusIdle, "" })
+			for m := 61; m <= 64; m++ {
+				h.tickAt(time.Duration(m) * time.Minute)
+			}
+			if p := h.plan(key); p == nil || p.State != model.PlanActive {
+				t.Fatalf("plan %+v", p)
+			}
+		})
+	}
+}
+
+// The last treatment ping of the day must fit in the budget.
+func TestExperimentPingFitsBudget(t *testing.T) {
+	h := quietHarness(t, model.ArmPing)
+	h.svc.mu.Lock()
+	h.svc.expCost = experiment.DailyCostUSD - 0.01 // less than one ping's read
+	h.svc.mu.Unlock()
+	h.tickAt(55 * time.Minute)
+	if h.del.count() != 0 {
+		t.Fatal("pinged past the daily budget")
 	}
 }

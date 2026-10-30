@@ -564,6 +564,9 @@ func TestExperimentsOptOutQueued(t *testing.T) {
 	if err := g.r.SetExperiments(false); err != nil {
 		t.Fatal(err)
 	}
+	if p, err := g.r.Preview(); err != nil || strings.Contains(string(p.(json.RawMessage)), "experiments") {
+		t.Fatalf("preview %s %v", p, err)
+	}
 	g.now = g.now.Add(2 * time.Hour)
 	g.r.pass(ctx)
 	if len(g.hub.got) != 1 || g.hub.got[0].Schema != 1 || g.hub.got[0].Experiments != nil {

@@ -82,12 +82,10 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 	if rec.EpisodeID != 0 {
 		pr.ep.pings++
 		s.expPings++
-		// A cache read of the context, so that pings sent before earlier
+		// Held until the reply is priced, so that pings sent before earlier
 		// replies are priced cannot overrun the daily budget.
-		if price, ok := s.cfg.Pricing.Lookup(pr.ep.Model); ok {
-			run.reserve = float64(pr.ep.ContextSize) * price.Read / 1e6
-			s.expCost += run.reserve
-		}
+		run.reserve = s.reserve(pr.ep)
+		s.expCost += run.reserve
 	}
 	s.pings[id] = run
 	s.inflight[sess.Key] = id
@@ -145,6 +143,12 @@ func (s *Service) commit(ctx context.Context, j job, err error) model.PingRecord
 			if errors.Is(err, model.ErrSessionChanged) {
 				s.endPlan(ctx, now, pp, model.PlanEnded, model.EndSwitched, "the process moved to another conversation")
 				pp = nil
+			} else if p.EpisodeID != 0 {
+				// A failed treatment stops for this episode and leaves the
+				// plan as it was: the plan would not have pinged.
+				if pp.ep != nil && pp.ep.ID == p.EpisodeID {
+					pp.ep.maxPings = pp.ep.pings
+				}
 			} else {
 				pp.deliveryErr = err.Error()
 				pp.LastError = "ping delivery failed: " + err.Error()

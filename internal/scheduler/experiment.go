@@ -93,6 +93,17 @@ func (s *Service) budgetLeft(ctx context.Context, now time.Time) bool {
 		s.expEpisodes < experiment.DailyEpisodes
 }
 
+// reserve is what a treatment ping of ep is expected to cost: a cache read
+// of its context. A cold reply costs more, a re-write the agent's return
+// would otherwise have paid, and is counted once priced. Requires s.mu.
+func (s *Service) reserve(ep *episodeRun) float64 {
+	price, ok := s.cfg.Pricing.Lookup(ep.Model)
+	if !ok {
+		return 0
+	}
+	return float64(ep.ContextSize) * price.Read / 1e6
+}
+
 // experimentStep opens, follows and closes the plan's episode, and reports
 // whether the plan should ping its working session as if it were idle (the
 // ping arm). working is the session's state before that. Requires s.mu.
@@ -128,7 +139,8 @@ func (s *Service) experimentStep(ctx context.Context, now time.Time, pr *planRun
 	}
 	ep := pr.ep
 	return ep != nil && ep.Arm == model.ArmPing && pr.State == model.PlanActive && working && sess.Quiet != "" &&
-		ep.pings < ep.maxPings && !s.expStopped[ep.Experiment] && s.budgetLeft(ctx, now)
+		ep.pings < ep.maxPings && !s.expStopped[ep.Experiment] && s.budgetLeft(ctx, now) &&
+		s.expCost+s.reserve(ep) <= experiment.DailyCostUSD
 }
 
 // openEpisode opens an episode for the session's quiet stretch if one may

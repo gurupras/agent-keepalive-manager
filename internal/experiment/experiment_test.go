@@ -19,8 +19,8 @@ func TestAtMostOnePerCause(t *testing.T) {
 			t.Fatalf("ForCause(%s) = %+v %v", e.Cause, got, ok)
 		}
 	}
-	// Mid-turn causes take no experiment: a ping would interrupt the task.
-	for _, c := range []model.QuietCause{model.QuietTool, model.QuietWaiting} {
+	// Causes that may be mid-turn take no experiment: a ping would interrupt the task.
+	for _, c := range []model.QuietCause{model.QuietTool, model.QuietWaiting, model.QuietOther} {
 		if e, ok := ForCause(c); ok {
 			t.Fatalf("cause %s has %+v", c, e)
 		}

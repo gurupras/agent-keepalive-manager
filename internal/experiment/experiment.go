@@ -36,14 +36,14 @@ type Experiment struct {
 // All is every experiment this release runs. Several run at once: each
 // takes the episodes of its own cause.
 //
-// The tool and waiting causes have none: their main agent is mid-turn, and
-// Claude Code hands a message that arrives then to the running turn, so a
-// ping would interrupt the agent's task rather than start a turn of its own.
+// Only the subagents cause has one, the one cause known to come after the
+// main agent's turn ended. In the others the turn may still be running (a
+// tool call, a permission prompt, a Stop hook), and Claude Code hands a
+// message that arrives then to the running turn, so a ping would interrupt
+// the agent's task rather than start a turn of its own.
 var All = []Experiment{
 	{ID: "busy-ping-subagents-1", Cause: model.QuietSubagents,
 		Summary: "Ping while the main agent waits for background sub-agents"},
-	{ID: "busy-ping-other-1", Cause: model.QuietOther,
-		Summary: "Ping while the session stays busy for another reason"},
 }
 
 // Guards on treatment spend.

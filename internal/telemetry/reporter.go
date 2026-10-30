@@ -256,6 +256,9 @@ func (r *Reporter) Preview() (any, error) {
 	if r.active() {
 		if days := r.q.days(); len(days) > 0 {
 			if b, err := r.q.read(days[0]); err == nil {
+				if on, _, _ := r.opts.Settings.Experiments(); !on {
+					b = withoutExperiments(b) // as sendDue sends it
+				}
 				return json.RawMessage(b), nil
 			}
 		}
