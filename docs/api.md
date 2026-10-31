@@ -37,13 +37,17 @@ A host that embeds the UI can add its own buttons to some places in it, the slot
 
 | Slot | Where |
 |---|---|
+| `session-actions` | every session: at the end of its title line in the session list (an icon button when the item has an icon), and under the folder in the details |
 | `plan-actions` | a running plan's controls: next to **Extend**, **Ping now** and **Stop** in the details, and in the gear menu in the session list |
 
-An item is `{id, label, title?, icon?, danger?}`: `id` up to 64 characters and unique in the slot, `label` up to 40, `title` its tooltip, `icon` one of the icon names the UI bundles (`web/src/icons/names.ts`; others are dropped) and `danger: true` shows it in red. At most 8 items are kept. `onClick(id, session)` gets the item's id and the session, `{key, harness, id, cwd, project, title}`.
+An item is `{id, label, title?, icon?, danger?, visible?}`: `id` up to 64 characters and unique in the slot, `label` up to 40, `title` its tooltip, `icon` one of the icon names the UI bundles (`web/src/icons/names.ts`; others are dropped) and `danger: true` shows it in red. At most 8 items are kept. `onClick(id, session)` gets the item's id and the session, `{key, harness, id, cwd, project, title}`.
+
+`visible(session)` decides whether the item shows on a session; without it the item shows on every one. The UI calls it as it draws, so keep it quick and synchronous (look the answer up in a cache, do not fetch). It is called again when the session changes or the slot is set; when only your answer changes, call `ka.slots.set` again with the same items. A filter that throws hides its item and is logged once.
 
 ```js
 export function setup (ka) {
-  ka.slots.set('plan-actions', [{ id: 'terminal', label: 'Open terminal', icon: 'lucide:terminal' }],
+  ka.slots.set('session-actions',
+    [{ id: 'terminal', label: 'Open terminal', icon: 'lucide:terminal', visible: s => s.harness === 'claude' }],
     (id, session) => openTerminal(session.cwd))
 }
 ```

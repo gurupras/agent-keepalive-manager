@@ -3,11 +3,11 @@ import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 import ExtendMenu from './ExtendMenu.vue'
 import PlanMenu from './PlanMenu.vue'
+import SlotButtons from './SlotButtons.vue'
 import type { Row } from '../lib/derive'
 import { clock, countdown, hoursLabel, money, parseTime, span } from '../lib/format'
 import { now } from '../composables/now'
 import { usePlanActions } from '../composables/planActions'
-import { pickSlot, slots } from '../composables/slots'
 
 // The state of a session's active or paused plan, with its controls.
 // `compact` is the one-line form used in the session list.
@@ -87,12 +87,7 @@ const left = computed(() => props.row.untilMs !== undefined && props.row.untilMs
         <button type="button" class="btn-outline" :disabled="!!busy || !canPing" :title="pingWhy" @click="run('ping')">
           <AppIcon :name="busy === 'ping' ? 'lucide:loader-circle' : 'lucide:send'" :spin="busy === 'ping'" /> Ping now
         </button>
-        <button
-          v-for="it in slots['plan-actions']" :key="it.id" type="button" :class="it.danger ? 'btn-danger' : 'btn-outline'"
-          :title="it.title" @click="pickSlot('plan-actions', it, row.s)"
-        >
-          <AppIcon v-if="it.icon" :name="it.icon" /> {{ it.label }}
-        </button>
+        <SlotButtons name="plan-actions" :row="row" class="contents" />
         <button type="button" class="btn-danger ml-auto" :disabled="!!busy" @click="run('stop')">
           <AppIcon :name="busy === 'stop' ? 'lucide:loader-circle' : 'lucide:ban'" :spin="busy === 'stop'" /> Stop
         </button>

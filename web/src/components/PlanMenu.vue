@@ -5,7 +5,7 @@ import type { Row } from '../lib/derive'
 import { hoursLabel } from '../lib/format'
 import { useMenu } from '../composables/menu'
 import { type PlanAction, usePlanActions } from '../composables/planActions'
-import { pickSlot, slots, type SlotItem } from '../composables/slots'
+import { pickSlot, slotItems, type SlotItem } from '../composables/slots'
 
 // The session list's keepalive menu: the drawer's plan controls (Extend,
 // Ping now, the framing page's items, Stop) behind a gear.
@@ -16,6 +16,7 @@ const root = useTemplateRef<HTMLElement>('root')
 const { open, toggle, close, onKey } = useMenu(root)
 const { busy, run, canPing, pingWhy, steps, extendWhy } = usePlanActions(() => props.row)
 const p = computed(() => props.row.plan!)
+const items = computed(() => slotItems('plan-actions', props.row.s))
 
 function act (what: PlanAction, hours = 0) {
   close(true)
@@ -50,7 +51,7 @@ function pick (it: SlotItem) {
         <AppIcon name="lucide:send" /> Ping now
       </button>
       <button
-        v-for="it in slots['plan-actions']" :key="it.id" type="button" role="menuitem" class="menu-item"
+        v-for="it in items" :key="it.id" type="button" role="menuitem" class="menu-item"
         :class="it.danger ? 'text-danger' : 'text-ink-1'" :title="it.title" @click="pick(it)"
       >
         <AppIcon v-if="it.icon" :name="it.icon" /> {{ it.label }}

@@ -8,6 +8,7 @@ import CacheCountdown from './CacheCountdown.vue'
 import PlanPanel from './PlanPanel.vue'
 import PlanStatus from './PlanStatus.vue'
 import PingHistory from './PingHistory.vue'
+import SlotButtons from './SlotButtons.vue'
 import { drawerRow, ui } from '../composables/ui'
 import { loadPings, pingNow, store } from '../api/store'
 import { noReachWhy, planCap, quietText } from '../lib/derive'
@@ -57,6 +58,7 @@ async function ping () {
           <span class="text-xs text-ink-2">TTL {{ span(r.ttlMs) }}</span>
         </div>
         <CacheBar :row="r" class="mt-1.5" />
+        <SlotButtons name="session-actions" :row="r" class="mt-3" />
       </div>
 
       <p v-if="r.s.reach === 'none'" class="flex gap-2 rounded-lg bg-danger-soft px-3 py-2 text-[13px] text-ink-1">
