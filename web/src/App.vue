@@ -11,6 +11,7 @@ import StoppedScreen from './components/StoppedScreen.vue'
 import ToastHost from './components/ToastHost.vue'
 import { closeTopmost, searchInput, ui } from './composables/ui'
 import { watchUsageNotice } from './composables/usageNotice'
+import { watchSlots } from './composables/slots'
 import { store } from './api/store'
 
 const route = useRoute()
@@ -51,6 +52,7 @@ function reload () {
 onMounted(() => {
   window.addEventListener('keydown', onKey)
   watchUsageNotice()
+  watchSlots()
 })
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>

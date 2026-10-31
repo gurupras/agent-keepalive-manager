@@ -1,17 +1,19 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 import ExtendMenu from './ExtendMenu.vue'
-import { noReachWhy, type Row } from '../lib/derive'
+import PlanMenu from './PlanMenu.vue'
+import type { Row } from '../lib/derive'
 import { clock, countdown, hoursLabel, money, parseTime, span } from '../lib/format'
-import { cancelPlan, pingNow, resumePlan } from '../api/store'
 import { now } from '../composables/now'
+import { usePlanActions } from '../composables/planActions'
+import { pickSlot, slots } from '../composables/slots'
 
 // The state of a session's active or paused plan, with its controls.
 // `compact` is the one-line form used in the session list.
 const props = defineProps<{ row: Row, compact?: boolean }>()
 
-const busy = ref<'' | 'stop' | 'resume' | 'ping'>('')
+const { busy, run, canPing, pingWhy } = usePlanActions(() => props.row)
 const p = computed(() => props.row.plan!)
 
 const headline = computed(() => {
@@ -31,19 +33,6 @@ const next = computed(() => {
 })
 
 const left = computed(() => props.row.untilMs !== undefined && props.row.untilMs > 0 ? `${span(props.row.untilMs)} left` : '')
-const canPing = computed(() => props.row.s.reach !== 'none' && !props.row.working)
-const pingWhy = computed(() => props.row.s.reach === 'none'
-  ? noReachWhy(props.row.s)
-  : props.row.working ? 'The session is working; it is pinged once idle.' : 'Send one keepalive ping now')
-
-async function run (what: 'stop' | 'resume' | 'ping') {
-  busy.value = what
-  const key = props.row.key
-  if (what === 'stop') await cancelPlan(key)
-  else if (what === 'resume') await resumePlan(key)
-  else await pingNow(key)
-  busy.value = ''
-}
 </script>
 
 <template>
@@ -65,9 +54,7 @@ async function run (what: 'stop' | 'resume' | 'ping') {
         <button v-if="p.state === 'paused'" type="button" class="btn-soft" :disabled="!!busy" @click="run('resume')">
           <AppIcon :name="busy === 'resume' ? 'lucide:loader-circle' : 'lucide:play'" :spin="busy === 'resume'" /> Resume
         </button>
-        <button type="button" class="icon-btn" :disabled="!!busy" aria-label="Stop keeping warm" title="Stop keeping warm" @click="run('stop')">
-          <AppIcon :name="busy === 'stop' ? 'lucide:loader-circle' : 'lucide:ban'" :spin="busy === 'stop'" />
-        </button>
+        <PlanMenu :row="row" />
       </div>
     </div>
 
@@ -99,6 +86,12 @@ async function run (what: 'stop' | 'resume' | 'ping') {
         <ExtendMenu v-if="!p.indefinite" :row="row" />
         <button type="button" class="btn-outline" :disabled="!!busy || !canPing" :title="pingWhy" @click="run('ping')">
           <AppIcon :name="busy === 'ping' ? 'lucide:loader-circle' : 'lucide:send'" :spin="busy === 'ping'" /> Ping now
+        </button>
+        <button
+          v-for="it in slots['plan-actions']" :key="it.id" type="button" :class="it.danger ? 'btn-danger' : 'btn-outline'"
+          :title="it.title" @click="pickSlot('plan-actions', it, row.s)"
+        >
+          <AppIcon v-if="it.icon" :name="it.icon" /> {{ it.label }}
         </button>
         <button type="button" class="btn-danger ml-auto" :disabled="!!busy" @click="run('stop')">
           <AppIcon :name="busy === 'stop' ? 'lucide:loader-circle' : 'lucide:ban'" :spin="busy === 'stop'" /> Stop

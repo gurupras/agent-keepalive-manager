@@ -32,7 +32,7 @@ A session shows **Can't be pinged** when agent-keepalive has no way to reach it:
 - **The cap.** No plan runs longer than *Longest plan* in Settings (36 hours unless you change it), and no plan runs past the session's break-even, where the pings would cost more than re-writing the cache once. The panel says which limit applies.
 - **The quote.** Before you confirm, the panel shows how many pings the plan can send and what they would cost at most.
 
-A running plan can be **extended** (in steps up to the cap), **stopped**, or sent a ping **now**. Its status is one of:
+A running plan can be **extended** (in steps up to the cap), **stopped**, or sent a ping **now**: from the details, or from the gear next to the plan in the session list. Its status is one of:
 
 | Status | Meaning |
 |---|---|

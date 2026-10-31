@@ -148,6 +148,10 @@
   @apply btn-ghost size-8 p-0;
 }
 
+@utility menu-item {
+  @apply flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[13px] outline-none hover:bg-surface-2 focus-visible:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50;
+}
+
 @utility label {
   @apply text-xs font-medium text-ink-2;
 }

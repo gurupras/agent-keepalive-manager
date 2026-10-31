@@ -19,6 +19,34 @@ The token is what keeps other local users and other programs out: the server bin
 - The page is served with `Cache-Control: no-store`, because it carries the token.
 - Framing: the CSP has `frame-ancestors 'self'` (plus `X-Frame-Options: SAMEORIGIN`) by default. An embedder that frames the UI from another origin passes `--frame-ancestors "<sources>"` (or `$AGENT_KEEPALIVE_FRAME_ANCESTORS`), for example `--frame-ancestors "'self' http://*.localhost:*"`; `X-Frame-Options` is then omitted.
 
+## Slots
+
+A page that frames the UI can add its own buttons to some places in it, the slots. Only messages from the parent window are heard, and `frame-ancestors` decides which pages may be the parent.
+
+| Slot | Where |
+|---|---|
+| `plan-actions` | a running plan's controls: next to **Extend**, **Ping now** and **Stop** in the details, and in the gear menu in the session list |
+
+Messages are `postMessage` objects:
+
+| Direction | Message |
+|---|---|
+| UI → parent | `{type: "agent-keepalive:ready", slots: ["plan-actions"]}` once the UI has loaded (target `*`; it carries nothing else) |
+| parent → UI | `{type: "agent-keepalive:slot", slot, items: [{id, label, title?, icon?, danger?}]}` sets the slot's items, replacing earlier ones; `[]` clears it |
+| UI → parent | `{type: "agent-keepalive:slot-click", slot, item, session: {key, harness, id, cwd, project, title}}` when an item is clicked, sent only to the origin that set the items |
+
+Send the items after `ready`; messages sent before it are lost. An item needs an `id` (up to 64 characters, unique in the slot) and a `label` (up to 40); `title` is its tooltip, `icon` one of the icon names the UI bundles (`web/src/icons/names.ts`, others are dropped), and `danger: true` shows it in red. At most 8 items are kept. A sandboxed parent (origin `null`) is ignored.
+
+```js
+window.addEventListener('message', e => {
+  if (e.source !== frame.contentWindow) return
+  if (e.data.type === 'agent-keepalive:ready')
+    e.source.postMessage({ type: 'agent-keepalive:slot', slot: 'plan-actions',
+      items: [{ id: 'terminal', label: 'Open terminal', icon: 'lucide:terminal' }] }, e.origin)
+  if (e.data.type === 'agent-keepalive:slot-click') openTerminal(e.data.session.cwd)
+})
+```
+
 ## Routes
 
 | Method & path | Body | Answer |
