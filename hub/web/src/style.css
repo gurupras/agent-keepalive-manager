@@ -85,6 +85,7 @@ body {
 .chart-label { fill: var(--ka-text-3); font-size: 11px; font-family: var(--ka-font); }
 .chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-area { opacity: 0.14; }
+.chart-bar { fill: var(--ka-accent); }
 .chart-cursor { stroke: var(--ka-text-3); stroke-dasharray: 3 3; }
 .tone-net { stroke: var(--ka-accent); fill: var(--ka-accent); }
 .tone-saved { stroke: var(--ka-ok); fill: var(--ka-ok); }

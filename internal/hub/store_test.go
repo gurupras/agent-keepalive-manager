@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -693,4 +694,49 @@ func TestExperimentDiff(t *testing.T) {
 			t.Errorf("t(%v) = %v; want %v", c.df, got, c.want)
 		}
 	}
+}
+
+func TestPingContext(t *testing.T) {
+	forEachStore(t, func(t *testing.T, s *Store) {
+		ctx := context.Background()
+		put := func(install, day string, cs ...model.PingContextSum) {
+			t.Helper()
+			r := mkReport(install, day)
+			r.Schema, r.PingContext = 3, cs
+			if err := r.Validate(testNow); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.Upsert(ctx, r, testNow, Admission{}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		c := func(m string, from int64, n int) model.PingContextSum {
+			return model.PingContextSum{Harness: "claude", Model: m, FromTokens: from, Pings: n}
+		}
+		put(idA, "2026-10-20", c("opus", 100000, 3), c("opus", 150000, 1))
+		put(idB, "2026-10-20", c("opus", 100000, 2), c("sonnet", 0, 4))
+		put(idA, "2026-10-21", c("opus", 100000, 1))
+		put(idA, "2026-09-30", c("opus", 100000, 9)) // out of range
+		// A report sent again replaces the day's counts.
+		put(idB, "2026-10-20", c("opus", 100000, 5))
+
+		rows, err := s.PingContext(ctx, Range{From: "2026-10-01", To: "2026-10-27"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []PingContextRow{
+			{Harness: "claude", Model: "opus", FromTokens: 100000, Pings: 9, Installs: 2},
+			{Harness: "claude", Model: "opus", FromTokens: 150000, Pings: 1, Installs: 1},
+		}
+		if fmt.Sprint(rows) != fmt.Sprint(want) {
+			t.Fatalf("rows\n got %+v\nwant %+v", rows, want)
+		}
+		if _, err := s.Purge(ctx, "2026-10-21"); err != nil {
+			t.Fatal(err)
+		}
+		rows, _ = s.PingContext(ctx, Range{From: "2026-01-01", To: "2026-10-27"})
+		if len(rows) != 1 || rows[0].Pings != 1 {
+			t.Fatalf("after purge %+v", rows)
+		}
+	})
 }

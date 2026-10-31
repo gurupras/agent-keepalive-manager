@@ -17,11 +17,12 @@ import (
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-// The report schemas this hub accepts. Schema 2 adds experiments; schema 1
-// is still sent by older clients.
+// The report schemas this hub accepts. Schema 2 adds experiments and
+// schema 3 ping context counts; clients send the lowest schema that holds
+// what a report has.
 const (
 	MinSchema = 1
-	MaxSchema = 2
+	MaxSchema = 3
 )
 
 const (
@@ -33,6 +34,7 @@ const (
 	maxSessionKeys   = 64
 	maxOutcomes      = 1000
 	maxExperiments   = 1000
+	maxPingContext   = 5000
 	// Bounds on counts and amounts keep the database's sums far from
 	// overflow; no real install comes near them.
 	maxCount  = 1_000_000_000_000
@@ -53,9 +55,12 @@ type Report struct {
 	Plans       model.DayPlans        `json:"plans"`
 	Pings       model.DayPings        `json:"pings"`
 	Outcomes    []model.OutcomeSum    `json:"outcomes"`
-	// Experiments is required from schema 2 on (an empty array when the
-	// install is in none) and refused before it.
+	// Experiments is required in schema 2 (an empty array when the install
+	// is in none), optional from schema 3 and refused before 2.
 	Experiments []model.ExperimentSum `json:"experiments,omitempty"`
+	// PingContext is schema 3: the day's pings by the context size they were
+	// sent at.
+	PingContext []model.PingContextSum `json:"pingContext,omitempty"`
 }
 
 // ValidationError is a report that is refused with 400.
@@ -189,6 +194,9 @@ func (r *Report) Validate(now time.Time) error {
 	if err := r.checkExperiments(); err != nil {
 		return err
 	}
+	if err := r.checkPingContext(); err != nil {
+		return err
+	}
 	return r.checkPlausible()
 }
 
@@ -198,8 +206,8 @@ func (r *Report) checkExperiments() error {
 	switch {
 	case r.Schema < 2 && r.Experiments != nil:
 		return invalid("experiments: not in schema %d", r.Schema)
-	case r.Schema >= 2 && r.Experiments == nil:
-		return invalid("experiments: required from schema 2 (an empty array when there are none)")
+	case r.Schema == 2 && r.Experiments == nil:
+		return invalid("experiments: required in schema 2 (an empty array when there are none)")
 	case len(r.Experiments) > maxExperiments:
 		return invalid("experiments: more than %d entries", maxExperiments)
 	}
@@ -247,6 +255,48 @@ func (r *Report) checkExperiments() error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// checkPingContext applies the field rules to pingContext: schema 3 only,
+// buckets on the documented boundaries, one entry per harness, model and
+// bucket.
+func (r *Report) checkPingContext() error {
+	switch {
+	case r.Schema < 3 && r.PingContext != nil:
+		return invalid("pingContext: not in schema %d", r.Schema)
+	case len(r.PingContext) > maxPingContext:
+		return invalid("pingContext: more than %d entries", maxPingContext)
+	}
+	type key struct {
+		harness, model string
+		from           int64
+	}
+	seen := make(map[key]int, len(r.PingContext))
+	for i, c := range r.PingContext {
+		p := fmt.Sprintf("pingContext[%d].", i)
+		if err := checkString(p+"harness", string(c.Harness), true); err != nil {
+			return err
+		}
+		if err := checkString(p+"model", c.Model, false); err != nil {
+			return err
+		}
+		if c.FromTokens < 0 || c.FromTokens > model.PingContextMax || c.FromTokens%model.PingContextBucket != 0 {
+			return invalid("%sfromTokens: must be a multiple of %d from 0 to %d", p, model.PingContextBucket,
+				model.PingContextMax)
+		}
+		if c.Pings < 1 {
+			return invalid("%spings: must be at least 1", p)
+		}
+		if err := checkCount(p+"pings", int64(c.Pings)); err != nil {
+			return err
+		}
+		k := key{string(c.Harness), c.Model, c.FromTokens}
+		if j, ok := seen[k]; ok {
+			return invalid("%s: same harness, model and fromTokens as pingContext[%d]", p[:len(p)-1], j)
+		}
+		seen[k] = i
 	}
 	return nil
 }
@@ -314,6 +364,13 @@ func (r *Report) checkPlausible() error {
 	}
 	if g.CostUSD > float64(g.Sent)*maxPingCost {
 		return invalid("pings.costUsd: more than $%v per ping", maxPingCost)
+	}
+	var counted int64
+	for _, c := range r.PingContext {
+		counted += int64(c.Pings)
+	}
+	if counted > int64(g.Sent) {
+		return invalid("pingContext: more pings than pings.sent")
 	}
 	for i, o := range r.Outcomes {
 		pre := fmt.Sprintf("outcomes[%d].", i)

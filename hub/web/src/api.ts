@@ -127,6 +127,25 @@ export async function experiments (r: DayRange, installs: Installs, signal?: Abo
   return body.experiments
 }
 
+export interface PingContextRow {
+  harness: string
+  model: string
+  fromTokens: number
+  pings: number
+  installs: number
+}
+
+/** PingContext counts pings by context size, in buckets of bucketTokens; maxTokens starts the last, open one. */
+export interface PingContext {
+  bucketTokens: number
+  maxTokens: number
+  rows: PingContextRow[]
+}
+
+export function pingContext (r: DayRange, installs: Installs, signal?: AbortSignal): Promise<PingContext> {
+  return get('v1/ping-context', { from: r.from, to: r.to, installs }, signal)
+}
+
 export interface Session {
   mode: 'public' | 'token'
   authenticated: boolean

@@ -17,7 +17,7 @@ A new install, and each new version, also sends the report of the current day so
 
 ```json
 {
-  "schema": 2,
+  "schema": 3,
   "installId": "8d3c6f0e-2b7a-4f5e-9c1d-3a4b5c6d7e8f",
   "day": "2026-10-26",
   "version": "1.4.0",
@@ -38,6 +38,10 @@ A new install, and each new version, also sends the report of the current day so
       "episodes": 3, "returned": 3, "warm": 2, "pings": 5, "pingCalls": 5,
       "pingCostUsd": 0.35, "rewriteUsd": 1.20, "costUsd": 1.55, "costSqUsd": 1.61,
       "contextTokens": 540000, "quietMinutes": 96 }
+  ],
+  "pingContext": [
+    { "harness": "claude", "model": "claude-opus-4-1", "fromTokens": 100000, "pings": 12 },
+    { "harness": "claude", "model": "claude-opus-4-1", "fromTokens": 150000, "pings": 5 }
   ]
 }
 ```
@@ -52,8 +56,9 @@ A new install, and each new version, also sends the report of the current day so
 | `pings` | Keepalive pings sent that day, by result, and what they cost. |
 | `outcomes` | Ledger entries closed that day, summed per harness, model, outcome and reason. `contextTokens` and `idleMinutes` are sums. |
 | `experiments` | Schema 2. Experiment episodes closed that day, summed per experiment, arm, harness and model. See below. |
+| `pingContext` | Schema 3. The pings sent that day, counted per harness, model and the session's context size when each was sent, in buckets of 50k tokens: `fromTokens` is where the bucket starts (`100000` is 100k to 150k), and `1000000` counts every ping at 1M tokens or more. No exact sizes are sent. |
 
-`schema` is 2 for a report with `experiments`. A report without any (the install takes part in no experiment, or none of its episodes closed that day) leaves the field out and is schema 1, as from a client that predates experiments; the two are otherwise the same.
+A report is sent as the lowest schema that holds what it has: 3 with `pingContext`, else 2 with `experiments`, else 1. A field with nothing in it is left out (in schema 2, `experiments` is always there). A hub from before schema 3 refuses `pingContext`; the client then sends the report again without it.
 
 ### Experiments
 
@@ -74,7 +79,7 @@ An experiment compares two ways of handling a session the harness reports as bus
 | `costSqUsd` | The sum, over the episodes, of each one's cost squared, so the hub can compute the spread of costs. |
 | `contextTokens`, `quietMinutes` | Sums: each episode's context size, and how long it lasted. |
 
-**Never sent:** names, user names, e-mail, host names, IP addresses chosen by us, paths, project names, session titles or ids, prompts, transcript content, models' answers, settings other than the above. Experiments add only experiment ids, arm names, harness and model names, counts and sums. The hub does not store the sender's IP address. To limit new installs per network (below) it keeps, for the current UTC day only, an HMAC of the sender's /24 (IPv4) or /64 (IPv6) under a random salt that is replaced, and the old one deleted, every day; it cannot be turned back into an address or matched across days.
+**Never sent:** names, user names, e-mail, host names, IP addresses chosen by us, paths, project names, session titles or ids, prompts, transcript content, models' answers, settings other than the above. Experiments add only experiment ids, arm names, harness and model names, counts and sums; `pingContext` only counts per 50k-token bucket. The hub does not store the sender's IP address. To limit new installs per network (below) it keeps, for the current UTC day only, an HMAC of the sender's /24 (IPv4) or /64 (IPv6) under a random salt that is replaced, and the old one deleted, every day; it cannot be turned back into an address or matched across days.
 
 ## The hub
 
@@ -107,14 +112,15 @@ agent-keepalive-hub --listen :8080 --data-dir /var/lib/agent-keepalive-hub
 | `GET {base}/v1/series?from=&to=&installs=&metric=net|saved|wasted|installs|pings` | `[{day, value}]` |
 | `GET {base}/v1/breakdown?from=&to=&installs=&by=model|harness|version|os|installKind|profile` | `[{key, installs, saved, wasted, net, pings}]` |
 | `GET {base}/v1/experiments?from=&to=&installs=` | `{experiments: [{experiment, arms: [{arm, installs, episodes, returned, warm, pings, pingCalls, meanCostUsd, seCostUsd, warmRate, pingsPerEpisode, meanQuietMinutes}], diff: {meanCostUsd, ciLowUsd, ciHighUsd, significant} \| null}]}`, by experiment id, arms `hold` then `ping`. `meanCostUsd` is the mean cost per episode and `seCostUsd` its standard error; `warmRate` is `warm / returned`. `diff` is `ping` minus `hold` with a 95% interval (Welch's, with Student's t at the Welch–Satterthwaite degrees of freedom), `significant` when it excludes 0, and null while an arm has fewer than 10 episodes or none. Episodes are counted as independent, though those of one install are alike, so the interval is too narrow when a few installs supply most episodes |
+| `GET {base}/v1/ping-context?from=&to=&installs=` | `{bucketTokens, maxTokens, rows: [{harness, model, fromTokens, pings, installs}]}`: the pings in the range by harness, model and context bucket, from schema 3 reports |
 | `GET {base}/v1/session` | `{mode: "public"|"token", authenticated}`; needs no login (404 with `--dashboard off`) |
 | `POST {base}/v1/login` | `{"token": "…"}` → 204 with the session cookie, 401 wrong token (token mode only, else 404; 60 attempts per sender per hour) |
 | `POST {base}/v1/logout` | 204, clears the cookie |
 | `GET {base}/healthz` | `ok`, or 503 when the database is unreachable |
 | `GET {base}/` | the dashboard |
 
-The hub accepts schemas 1 and 2: `experiments` is required in schema 2 and refused in schema 1. A hub that predates schema 2 refuses those reports, so upgrade the hub before the clients that report to it.
+The hub accepts schemas 1 to 3: `experiments` is required in schema 2, optional in 3 and refused in 1; `pingContext` is refused before schema 3. A hub that predates schema 2 refuses those reports, so upgrade the hub before the clients that report to it. Clients resend a report without `pingContext` to a hub that refuses it, so a hub from before schema 3 still gets the rest.
 
 A report is validated against this schema: unknown fields are refused, strings are limited to 64 characters and must match `[A-Za-z0-9._:/-]`, counts and amounts must be finite and non-negative (`netUsd` may be negative), and `day` must not be in the future or more than 30 days old. `installs` is `established` (the default: only installs with `--established-days` reports) or `all`.
 
-The numbers must also be possible for one install in one day, or the report is refused with 400 (and the client drops it): `version` is a release (`1.2.3`, `1.2.3-rc.1`) or `dev`; `plans.indefinite` ≤ `plans.started` and `plans.hours` ≤ 168 per plan; `pings.verified`, `pings.cold` and `pings.verified + pings.failed` ≤ `pings.sent`; `pings.sent` ≤ 1440 per session seen (one a minute); at most $25 per ping. Each outcome has `count` ≥ 1, at most 10M `contextTokens` per entry, an `avoidedUsd` no larger than writing its context at $100 per 1M tokens, a `pingCostUsd` of at most $25 per ping, and `netUsd` = `avoidedUsd` − `pingCostUsd` (to within $0.01). There are at most 1000 experiment entries, no two with the same `experiment`, `arm`, `harness` and `model`, and at most 100 `episodes` in all (twice the 50 a day an install opens). Each has `episodes` ≥ 1, `warm` ≤ `returned` ≤ `episodes`, no pings or ping cost in `hold`, at most 50 `pingCalls` per ping, at most 10M `contextTokens` and 168 hours of `quietMinutes` per episode, a `pingCostUsd` of at most $25 per ping, a `rewriteUsd` no larger than writing 10M tokens per episode at $100 per 1M tokens, `costUsd` = `pingCostUsd` + `rewriteUsd` (to within $0.01), and `costUsd`² / `episodes` ≤ `costSqUsd` ≤ `costUsd`² (to within $0.01 plus one millionth of `costUsd`²).
+The numbers must also be possible for one install in one day, or the report is refused with 400 (and the client drops it): `version` is a release (`1.2.3`, `1.2.3-rc.1`) or `dev`; `plans.indefinite` ≤ `plans.started` and `plans.hours` ≤ 168 per plan; `pings.verified`, `pings.cold` and `pings.verified + pings.failed` ≤ `pings.sent`; `pings.sent` ≤ 1440 per session seen (one a minute); at most $25 per ping. Each outcome has `count` ≥ 1, at most 10M `contextTokens` per entry, an `avoidedUsd` no larger than writing its context at $100 per 1M tokens, a `pingCostUsd` of at most $25 per ping, and `netUsd` = `avoidedUsd` − `pingCostUsd` (to within $0.01). There are at most 1000 experiment entries, no two with the same `experiment`, `arm`, `harness` and `model`, and at most 100 `episodes` in all (twice the 50 a day an install opens). Each has `episodes` ≥ 1, `warm` ≤ `returned` ≤ `episodes`, no pings or ping cost in `hold`, at most 50 `pingCalls` per ping, at most 10M `contextTokens` and 168 hours of `quietMinutes` per episode, a `pingCostUsd` of at most $25 per ping, a `rewriteUsd` no larger than writing 10M tokens per episode at $100 per 1M tokens, `costUsd` = `pingCostUsd` + `rewriteUsd` (to within $0.01), and `costUsd`² / `episodes` ≤ `costSqUsd` ≤ `costUsd`² (to within $0.01 plus one millionth of `costUsd`²). There are at most 5000 `pingContext` entries, no two with the same `harness`, `model` and `fromTokens`; each has `pings` ≥ 1 and a `fromTokens` that is a multiple of 50000 from 0 to 1000000, and together they count no more pings than `pings.sent`.

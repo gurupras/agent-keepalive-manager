@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import * as api from './api.ts'
-import type { BreakdownRow, Dimension, Experiment, Installs, Metric, Point, Summary } from './api.ts'
+import type { BreakdownRow, Dimension, Experiment, Installs, Metric, PingContext, Point, Summary } from './api.ts'
 import { count, money, percent, shortDay } from './format.ts'
 import { useRange } from './range.ts'
 import { cycleTheme, theme } from './theme.ts'
 import BreakdownTable from './components/BreakdownTable.vue'
 import ExperimentCard from './components/ExperimentCard.vue'
 import KpiTile from './components/KpiTile.vue'
+import PingContextChart from './components/PingContextChart.vue'
 import RangePicker from './components/RangePicker.vue'
 import SeriesChart from './components/SeriesChart.vue'
 import TokenPrompt from './components/TokenPrompt.vue'
@@ -38,6 +39,7 @@ const summary = ref<Summary | null>(null)
 const points = ref<Point[] | null>(null)
 const tables = ref<Record<Dimension, BreakdownRow[] | null>>(emptyTables())
 const experiments = ref<Experiment[] | null>(null)
+const pingContext = ref<PingContext | null>(null)
 const error = ref('')
 const needToken = ref(false)
 const signedIn = ref(false)
@@ -75,6 +77,7 @@ function loadAll () {
   summary.value = null
   tables.value = emptyTables()
   experiments.value = null
+  pingContext.value = null
   api.summary(range.value, installs.value, signal).then(s => {
     if (signal.aborted) return
     summary.value = s
@@ -88,6 +91,9 @@ function loadAll () {
   }
   api.experiments(range.value, installs.value, signal).then(list => {
     if (!signal.aborted) experiments.value = list
+  }, e => failed(e, signal))
+  api.pingContext(range.value, installs.value, signal).then(d => {
+    if (!signal.aborted) pingContext.value = d
   }, e => failed(e, signal))
 }
 
@@ -245,6 +251,8 @@ const themeLabel = computed(() => ({ system: 'Theme: system', light: 'Theme: lig
         <p v-if="points === null" class="py-24 text-center text-sm text-text-3">Loading…</p>
         <SeriesChart v-else :points="points" :metric="metric" />
       </section>
+
+      <PingContextChart :data="pingContext" />
 
       <section class="grid gap-4 lg:grid-cols-2" aria-label="Breakdowns">
         <BreakdownTable v-for="d in DIMENSIONS" :key="d.key" :title="d.label" :rows="tables[d.key]" />

@@ -115,7 +115,7 @@ func TestDecodeReportExperimentRules(t *testing.T) {
 		{name: "schema 2 without experiments", mutate: func(r map[string]any) { delete(r, "experiments") }, field: "experiments"},
 		{name: "schema 2 with null experiments", mutate: func(r map[string]any) { r["experiments"] = nil }, field: "experiments"},
 		{name: "schema 2 with empty experiments", mutate: func(r map[string]any) { r["experiments"] = []any{} }, ok: true},
-		{name: "schema 3", mutate: func(r map[string]any) { r["schema"] = 3 }, field: "schema"},
+		{name: "schema 4", mutate: func(r map[string]any) { r["schema"] = 4 }, field: "schema"},
 		// structure and strings
 		{name: "unknown field", mutate: func(r map[string]any) { exp0(r)["session"] = "x" }, field: "session"},
 		{name: "experiment missing", mutate: func(r map[string]any) { delete(exp0(r), "experiment") }, field: "experiments[0].experiment"},
@@ -254,7 +254,7 @@ func TestDecodeReportRules(t *testing.T) {
 		{name: "schema missing", mutate: func(r map[string]any) { delete(r, "schema") }},
 		{name: "schema 0", mutate: func(r map[string]any) { r["schema"] = 0 }},
 		{name: "schema 2 without experiments", mutate: func(r map[string]any) { r["schema"] = 2 }},
-		{name: "schema 3", mutate: func(r map[string]any) { r["schema"] = 3 }},
+		{name: "schema 4", mutate: func(r map[string]any) { r["schema"] = 4 }},
 		// installId
 		{name: "installId missing", mutate: func(r map[string]any) { delete(r, "installId") }},
 		{name: "installId not uuid", mutate: func(r map[string]any) { r["installId"] = "my-laptop" }},
@@ -407,4 +407,63 @@ func mustJSON(v any) []byte {
 		panic(err)
 	}
 	return b
+}
+
+// validReport3 is the schema 3 example from docs/metrics.md: validReport2
+// plus pingContext.
+func validReport3() map[string]any {
+	r := validReport2()
+	r["schema"] = 3
+	r["pingContext"] = []any{
+		map[string]any{"harness": "claude", "model": "claude-opus-4-1", "fromTokens": 100000, "pings": 12},
+		map[string]any{"harness": "claude", "model": "claude-opus-4-1", "fromTokens": 150000, "pings": 5},
+	}
+	return r
+}
+
+func ctx0(r map[string]any) map[string]any { return r["pingContext"].([]any)[0].(map[string]any) }
+
+// TestDecodeReportPingContextRules changes one thing in validReport3 per
+// case; a refusal must name the field.
+func TestDecodeReportPingContextRules(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(map[string]any)
+		field  string
+		ok     bool
+	}{
+		{"valid", func(r map[string]any) {}, "", true},
+		{"experiments optional", func(r map[string]any) { delete(r, "experiments") }, "", true},
+		{"ping context optional", func(r map[string]any) { delete(r, "pingContext") }, "", true},
+		{"last bucket", func(r map[string]any) { ctx0(r)["fromTokens"] = 1000000 }, "", true},
+		{"no model", func(r map[string]any) { ctx0(r)["model"] = "" }, "", true},
+		{"before schema 3", func(r map[string]any) { r["schema"] = 2 }, "pingContext", false},
+		{"schema 4", func(r map[string]any) { r["schema"] = 4 }, "schema", false},
+		{"off a boundary", func(r map[string]any) { ctx0(r)["fromTokens"] = 120000 }, "fromTokens", false},
+		{"past the last bucket", func(r map[string]any) { ctx0(r)["fromTokens"] = 1050000 }, "fromTokens", false},
+		{"negative bucket", func(r map[string]any) { ctx0(r)["fromTokens"] = -50000 }, "fromTokens", false},
+		{"no pings", func(r map[string]any) { ctx0(r)["pings"] = 0 }, "pings", false},
+		{"no harness", func(r map[string]any) { ctx0(r)["harness"] = "" }, "harness", false},
+		{"bad model", func(r map[string]any) { ctx0(r)["model"] = "a b" }, "model", false},
+		{"duplicate", func(r map[string]any) { ctx0(r)["fromTokens"] = 150000 }, "pingContext[1]", false},
+		{"more than sent", func(r map[string]any) { ctx0(r)["pings"] = 13 }, "pingContext", false},
+		{"unknown field", func(r map[string]any) { ctx0(r)["tokens"] = 1 }, "tokens", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := validReport3()
+			c.mutate(r)
+			_, err := DecodeReport(encode(t, r), testNow)
+			if c.ok {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) || !strings.Contains(err.Error(), c.field) {
+				t.Fatalf("err %v, want a refusal naming %q", err, c.field)
+			}
+		})
+	}
 }

@@ -165,6 +165,17 @@ var migrations = []string{
 		PRIMARY KEY (install_id, day, experiment, arm, harness, model)
 	);
 	CREATE INDEX experiment_sums_day ON experiment_sums (day);`,
+	// ping_context holds schema 3's pingContext, one row per entry.
+	`CREATE TABLE ping_context (
+		install_id  TEXT NOT NULL,
+		day         TEXT NOT NULL,
+		harness     TEXT NOT NULL,
+		model       TEXT NOT NULL,
+		from_tokens BIGINT NOT NULL,
+		pings       BIGINT NOT NULL,
+		PRIMARY KEY (install_id, day, harness, model, from_tokens)
+	);
+	CREATE INDEX ping_context_day ON ping_context (day);`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -366,7 +377,7 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 		if err != nil {
 			return err
 		}
-		for _, table := range []string{"report_sessions", "outcomes", "experiment_sums"} {
+		for _, table := range []string{"report_sessions", "outcomes", "experiment_sums", "ping_context"} {
 			if _, err := tx.ExecContext(ctx, s.q(`DELETE FROM `+table+` WHERE install_id = ? AND day = ?`),
 				r.InstallID, r.Day); err != nil {
 				return err
@@ -399,6 +410,13 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 				return err
 			}
 		}
+		for _, c := range r.PingContext {
+			if _, err := tx.ExecContext(ctx, s.q(`INSERT INTO ping_context (
+				install_id, day, harness, model, from_tokens, pings) VALUES (?, ?, ?, ?, ?, ?)`),
+				r.InstallID, r.Day, string(c.Harness), c.Model, c.FromTokens, c.Pings); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	return created, err
@@ -409,7 +427,7 @@ func (s *Store) Upsert(ctx context.Context, r *Report, received time.Time, a Adm
 func (s *Store) Purge(ctx context.Context, cutoff string) (int64, error) {
 	var n int64
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
-		for _, table := range []string{"outcomes", "report_sessions", "experiment_sums"} {
+		for _, table := range []string{"outcomes", "report_sessions", "experiment_sums", "ping_context"} {
 			if _, err := tx.ExecContext(ctx, s.q(`DELETE FROM `+table+` WHERE day < ?`), cutoff); err != nil {
 				return err
 			}
@@ -822,6 +840,39 @@ func (s *Store) Experiments(ctx context.Context, rg Range) ([]Experiment, error)
 		}
 	}
 	return out, nil
+}
+
+// PingContextRow counts the pings in a range sent to sessions of one
+// harness and model in one context bucket (model.PingContextBucket wide).
+type PingContextRow struct {
+	Harness    string `json:"harness"`
+	Model      string `json:"model"`
+	FromTokens int64  `json:"fromTokens"`
+	Pings      int64  `json:"pings"`
+	Installs   int64  `json:"installs"`
+}
+
+// PingContext returns the pings in rg by harness, model and context bucket.
+func (s *Store) PingContext(ctx context.Context, rg Range) ([]PingContextRow, error) {
+	ef, args := rg.established("c.install_id")
+	rows, err := s.db.QueryContext(ctx, s.q(`SELECT c.harness, c.model, c.from_tokens,
+		CAST(SUM(c.pings) AS BIGINT), COUNT(DISTINCT c.install_id)
+		FROM ping_context c WHERE c.day >= ? AND c.day <= ?`+ef+`
+		GROUP BY c.harness, c.model, c.from_tokens ORDER BY c.harness, c.model, c.from_tokens`),
+		append([]any{rg.From, rg.To}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []PingContextRow{}
+	for rows.Next() {
+		var c PingContextRow
+		if err := rows.Scan(&c.Harness, &c.Model, &c.FromTokens, &c.Pings, &c.Installs); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // meanSE is the mean of n episode costs and its standard error, from their
