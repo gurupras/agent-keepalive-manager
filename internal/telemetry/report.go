@@ -15,10 +15,10 @@ import (
 	"github.com/gurupras/agent-keepalive-manager/internal/model"
 )
 
-// Schema is the report schema version. Schema 2 added Experiments; a
-// report without any is sent as schema 1, which a hub from before
-// experiments also takes.
-const Schema = 2
+// Schema is the report schema version. Schema 2 added Experiments and
+// schema 3 PingContext. A report is sent as the lowest schema that holds
+// what it has (schema 1 without either), so that older hubs take it.
+const Schema = 3
 
 // Report is one install's usage for one UTC day: the body POSTed to the
 // hub. The field order is the documented one.
@@ -35,9 +35,22 @@ type Report struct {
 	Plans       Plans          `json:"plans"`
 	Pings       Pings          `json:"pings"`
 	Outcomes    []Outcome      `json:"outcomes"`
-	// Experiments sums the experiment episodes closed on the day; absent,
-	// in schema 1, when there are none (docs/experiments.md).
+	// Experiments sums the experiment episodes closed on the day; absent
+	// when there are none (docs/experiments.md).
 	Experiments []model.ExperimentSum `json:"experiments,omitempty"`
+	// PingContext counts the day's pings by the context size they were sent
+	// at, in buckets; absent, before schema 3, when there are none.
+	PingContext []PingContext `json:"pingContext,omitempty"`
+}
+
+// PingContext counts the pings sent on the day to sessions of one harness
+// and model with a context of FromTokens to FromTokens+50k tokens (1M: 1M
+// or more).
+type PingContext struct {
+	Harness    string `json:"harness"`
+	Model      string `json:"model"`
+	FromTokens int64  `json:"fromTokens"`
+	Pings      int    `json:"pings"`
 }
 
 // Plans counts the plans started on the day.
@@ -148,25 +161,97 @@ func BuildReport(installID string, b Build, ds model.DayStats) Report {
 		return a.EndedBy < b.EndedBy
 	})
 	r.Experiments = experiments(ds.Experiments)
-	if len(r.Experiments) == 0 {
-		r.dropExperiments()
-	}
+	r.PingContext = pingContext(ds.PingContext)
+	r.setSchema()
 	return r
+}
+
+// pingContext sanitises ping context counts, merging those that sanitise
+// to the same group.
+func pingContext(in []model.PingContextSum) []PingContext {
+	type key struct {
+		h, m string
+		from int64
+	}
+	idx := map[key]int{}
+	var out []PingContext
+	for _, c := range in {
+		if c.Pings <= 0 {
+			continue
+		}
+		k := key{Sanitize(string(c.Harness)), Sanitize(c.Model), model.PingContextBucketOf(c.FromTokens)}
+		i, ok := idx[k]
+		if !ok {
+			i = len(out)
+			idx[k] = i
+			out = append(out, PingContext{Harness: k.h, Model: k.m, FromTokens: k.from})
+		}
+		out[i].Pings += c.Pings
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Harness != b.Harness {
+			return a.Harness < b.Harness
+		}
+		if a.Model != b.Model {
+			return a.Model < b.Model
+		}
+		return a.FromTokens < b.FromTokens
+	})
+	return out
+}
+
+// setSchema gives r the lowest schema that holds its content, leaving out
+// the optional fields it has none of.
+func (r *Report) setSchema() {
+	if len(r.Experiments) == 0 {
+		r.Experiments = nil
+	}
+	if len(r.PingContext) == 0 {
+		r.PingContext = nil
+	}
+	switch {
+	case r.PingContext != nil:
+		r.Schema = 3
+	case r.Experiments != nil:
+		r.Schema = 2
+	default:
+		r.Schema = 1
+	}
 }
 
 // experiments sanitises experiment sums, merging those that sanitise to
 // the same group.
-// dropExperiments makes r a schema 1 report, without experiments.
-func (r *Report) dropExperiments() { r.Schema, r.Experiments = 1, nil }
-
 // withoutExperiments returns a queued report body without its experiments,
 // or body as it is when it has none (or cannot be read).
 func withoutExperiments(body []byte) []byte {
+	return rewrite(body, func(r *Report) bool {
+		had := len(r.Experiments) > 0
+		r.Experiments = nil
+		return had
+	})
+}
+
+// withoutPingContext returns a report body without its ping context
+// counts, for a hub from before schema 3, or body as it is when it has
+// none (or cannot be read).
+func withoutPingContext(body []byte) []byte {
+	return rewrite(body, func(r *Report) bool {
+		had := len(r.PingContext) > 0
+		r.PingContext = nil
+		return had
+	})
+}
+
+// rewrite applies change to a report body and re-encodes it at the schema
+// its content then needs; body is returned as it is when change reports
+// that nothing changed or the body cannot be read.
+func rewrite(body []byte, change func(*Report) bool) []byte {
 	var r Report
-	if err := json.Unmarshal(body, &r); err != nil || len(r.Experiments) == 0 {
+	if err := json.Unmarshal(body, &r); err != nil || !change(&r) {
 		return body
 	}
-	r.dropExperiments()
+	r.setSchema()
 	b, err := json.Marshal(r)
 	if err != nil {
 		return body
@@ -228,7 +313,7 @@ func empty(ds model.DayStats) bool {
 		}
 	}
 	return ds.Plans == (model.DayPlans{}) && ds.Pings == (model.DayPings{}) && len(ds.Outcomes) == 0 &&
-		len(ds.Experiments) == 0
+		len(ds.Experiments) == 0 && len(ds.PingContext) == 0
 }
 
 // MaxLen is the longest string the hub accepts.

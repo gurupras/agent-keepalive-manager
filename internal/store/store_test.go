@@ -354,3 +354,44 @@ func TestDayStats(t *testing.T) {
 		t.Fatalf("empty day: %+v", empty)
 	}
 }
+
+// A ping keeps the harness, model and context it was sent with, and the
+// day's stats count pings per harness, model and 50k-token bucket.
+func TestPingContext(t *testing.T) {
+	s := open(t)
+	for i, p := range []Ping{
+		{PingRecord: model.PingRecord{ContextTokens: 120_000}, Harness: model.Claude, Model: "opus"},
+		{PingRecord: model.PingRecord{ContextTokens: 149_999}, Harness: model.Claude, Model: "opus"},
+		{PingRecord: model.PingRecord{ContextTokens: 150_000, State: model.PingFailed}, Harness: model.Claude, Model: "opus"},
+		{PingRecord: model.PingRecord{ContextTokens: 2_500_000}, Harness: model.Codex, Model: "gpt-5"},
+		{PingRecord: model.PingRecord{ContextTokens: 0}, Harness: model.Codex, Model: "gpt-5"}, // not recorded
+		{PingRecord: model.PingRecord{ContextTokens: 90_000, SentAt: t0.AddDate(0, 0, 1)}, Harness: model.Claude, Model: "opus"},
+	} {
+		p.ID, p.Key = fmt.Sprint(i), "k"
+		if p.SentAt.IsZero() {
+			p.SentAt = t0
+		}
+		if p.State == "" {
+			p.State = model.PingVerified
+		}
+		if err := s.InsertPing(ctx, p, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.GetPing(ctx, "0")
+	if err != nil || got.ContextTokens != 120_000 || got.Harness != model.Claude || got.Model != "opus" {
+		t.Fatalf("ping %+v %v", got, err)
+	}
+	ds, err := s.DayStats(ctx, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []model.PingContextSum{
+		{Harness: model.Claude, Model: "opus", FromTokens: 100_000, Pings: 2},
+		{Harness: model.Claude, Model: "opus", FromTokens: 150_000, Pings: 1},
+		{Harness: model.Codex, Model: "gpt-5", FromTokens: 1_000_000, Pings: 1},
+	}
+	if fmt.Sprint(ds.PingContext) != fmt.Sprint(want) {
+		t.Fatalf("ping context\n got %+v\nwant %+v", ds.PingContext, want)
+	}
+}

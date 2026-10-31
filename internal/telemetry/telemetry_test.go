@@ -94,6 +94,8 @@ type hub struct {
 	blocking atomic.Bool
 	block    chan struct{} // closed at cleanup
 	entered  chan struct{}
+	// old makes it a hub from before schema 3, which refuses pingContext.
+	old atomic.Bool
 }
 
 func newHub(t *testing.T) *hub {
@@ -111,8 +113,13 @@ func newHub(t *testing.T) *hub {
 				return
 			}
 		}
+		body, _ := io.ReadAll(r.Body)
+		if h.old.Load() && strings.Contains(string(body), `"pingContext"`) {
+			http.Error(w, `{"error":"malformed report: json: unknown field \"pingContext\""}`, 400)
+			return
+		}
 		var rep Report
-		dec := json.NewDecoder(r.Body)
+		dec := json.NewDecoder(strings.NewReader(string(body)))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&rep); err != nil {
 			http.Error(w, err.Error(), 400)
@@ -585,6 +592,61 @@ func TestReportWithoutExperimentsIsSchema1(t *testing.T) {
 	b, _ := json.Marshal(r)
 	if r.Schema != 1 || strings.Contains(string(b), "experiments") {
 		t.Fatalf("report %s", b)
+	}
+}
+
+// Ping context counts make a schema 3 report, sanitised, merged and
+// sorted, with no experiments field when there are none.
+func TestReportPingContext(t *testing.T) {
+	ds := model.DayStats{Day: "2026-10-26", Pings: model.DayPings{Sent: 9},
+		PingContext: []model.PingContextSum{
+			{Harness: model.Claude, Model: "claude-opus-4-1", FromTokens: 150000, Pings: 2},
+			{Harness: model.Claude, Model: "claude opus", FromTokens: 50000, Pings: 1},
+			{Harness: model.Claude, Model: "claude_opus", FromTokens: 50000, Pings: 2},
+			{Harness: model.Codex, Model: "gpt-5", FromTokens: 1_234_567, Pings: 4},
+			{Harness: model.Codex, Model: "gpt-5", FromTokens: 0, Pings: 0},
+		}}
+	r := BuildReport("id", Build{"1.4.0", "linux", "amd64", "public", "deb"}, ds)
+	b, _ := json.Marshal(r)
+	if r.Schema != 3 || strings.Contains(string(b), "experiments") {
+		t.Fatalf("report %s", b)
+	}
+	want := `"pingContext":[{"harness":"claude","model":"claude-opus-4-1","fromTokens":150000,"pings":2},` +
+		`{"harness":"claude","model":"claude_opus","fromTokens":50000,"pings":3},` +
+		`{"harness":"codex","model":"gpt-5","fromTokens":1000000,"pings":4}]}`
+	if !strings.HasSuffix(string(b), want) {
+		t.Fatalf("report\n got %s\nwant suffix %s", b, want)
+	}
+
+	ds.Experiments = []model.ExperimentSum{{Experiment: "x", Arm: model.ArmHold, Harness: model.Claude, Episodes: 1}}
+	if r := BuildReport("id", Build{}, ds); r.Schema != 3 || len(r.Experiments) != 1 {
+		t.Fatalf("with experiments: %+v", r)
+	}
+	ds.PingContext = nil
+	if r := BuildReport("id", Build{}, ds); r.Schema != 2 || r.PingContext != nil {
+		t.Fatalf("without ping context: %+v", r)
+	}
+}
+
+// A hub from before schema 3 refuses pingContext; the report goes again
+// without it, at the schema the rest needs.
+func TestOlderHubGetsReportWithoutPingContext(t *testing.T) {
+	g := newRig(t, t0)
+	g.hub.old.Store(true)
+	ds := activeDay(dayOf(t0), 3)
+	ds.PingContext = []model.PingContextSum{{Harness: model.Claude, Model: "m", FromTokens: 100000, Pings: 3}}
+	g.stats.mu.Lock()
+	g.stats.days[dayOf(t0)] = ds
+	g.stats.mu.Unlock()
+	ctx := context.Background()
+	g.r.pass(ctx)
+	g.now = t0.AddDate(0, 0, 1)
+	g.r.pass(ctx)
+	if len(g.hub.got) != 1 || g.hub.got[0].Schema != 1 || g.hub.got[0].PingContext != nil || g.hub.got[0].Pings.Sent != 3 {
+		t.Fatalf("sent %+v", g.hub.got)
+	}
+	if len(g.queued()) != 0 || g.r.Status().LastError != "" {
+		t.Fatalf("queue %v, status %+v", g.queued(), g.r.Status())
 	}
 }
 

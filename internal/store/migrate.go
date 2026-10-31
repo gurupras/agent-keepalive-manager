@@ -133,6 +133,11 @@ CREATE INDEX episodes_ended ON episodes(ended_at);
 ALTER TABLE pings ADD COLUMN episode_id INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX pings_episode ON pings(episode_id);
 `},
+	{3, `
+ALTER TABLE pings ADD COLUMN harness TEXT NOT NULL DEFAULT '';
+ALTER TABLE pings ADD COLUMN model TEXT NOT NULL DEFAULT '';
+ALTER TABLE pings ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0;
+`},
 }
 
 // SchemaVersion returns the highest applied migration.

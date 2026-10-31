@@ -118,6 +118,8 @@ export interface PingRecord {
   /** sent by an experiment's treatment */
   experiment?: boolean
   error?: string
+  /** the session's context size, in tokens, when the ping was sent */
+  contextTokens?: number
 }
 
 export type Outcome = 'saved' | 'wasted'

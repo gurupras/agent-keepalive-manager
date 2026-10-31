@@ -535,6 +535,11 @@ func (r *Reporter) sendDue(parent context.Context) (retryAt time.Time) {
 		}
 
 		res := r.post(ctx, body)
+		if res.drop && predatesPingContext(res.err) {
+			if b := withoutPingContext(body); !bytes.Equal(b, body) {
+				res = r.post(ctx, b) // a hub from before schema 3
+			}
+		}
 
 		r.mu.Lock()
 		if r.epoch != epoch || ctx.Err() != nil {
@@ -578,6 +583,17 @@ func (r *Reporter) backoff() time.Duration {
 	}
 	r.attempts++
 	return d/2 + rand.N(d)
+}
+
+// predatesPingContext reports whether a hub refused a report for having
+// ping context counts, as a hub from before schema 3 does: an unknown
+// field, or a schema it does not take.
+func predatesPingContext(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "pingContext") || strings.Contains(msg, "schema: must be")
 }
 
 type postResult struct {

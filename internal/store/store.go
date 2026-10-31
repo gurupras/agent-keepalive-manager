@@ -346,9 +346,13 @@ type Ping struct {
 	// EpisodeID is the experiment episode whose treatment sent the ping;
 	// zero for every other ping.
 	EpisodeID int64
+	// Harness and Model are the session's when the ping was sent.
+	Harness model.Harness
+	Model   string
 }
 
-const pingCols = `id, plan_id, key, sent_at, state, calls, usage, cost, cold, error, seg_from, episode_id`
+const pingCols = `id, plan_id, key, sent_at, state, calls, usage, cost, cold, error, seg_from, episode_id,
+	harness, model, context_tokens`
 
 func scanPing(sc scanner) (Ping, error) {
 	var p Ping
@@ -356,7 +360,7 @@ func scanPing(sc scanner) (Ping, error) {
 	var cold int
 	var usage string
 	if err := sc.Scan(&p.ID, &p.PlanID, &p.Key, &sent, &p.State, &p.Calls, &usage, &p.Cost, &cold, &p.Error, &seg,
-		&p.EpisodeID); err != nil {
+		&p.EpisodeID, &p.Harness, &p.Model, &p.ContextTokens); err != nil {
 		return p, err
 	}
 	p.SentAt, p.SegFrom, p.Cold, p.Experiment = fromMS(sent), fromMS(seg), cold != 0, p.EpisodeID != 0
@@ -376,9 +380,9 @@ func (s *Store) InsertPing(ctx context.Context, p Ping, seg *Segment) error {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO pings (`+pingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		_, err := tx.ExecContext(ctx, `INSERT INTO pings (`+pingCols+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			p.ID, p.PlanID, p.Key, ms(p.SentAt), p.State, p.Calls, string(u), p.Cost, b2i(p.Cold), p.Error, ms(p.SegFrom),
-			p.EpisodeID)
+			p.EpisodeID, p.Harness, p.Model, p.ContextTokens)
 		return err
 	})
 }
@@ -650,7 +654,7 @@ func (s *Store) DayStats(ctx context.Context, day time.Time) (model.DayStats, er
 	start := time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 	lo, hi := start.UnixMilli(), start.AddDate(0, 0, 1).UnixMilli()
 	out := model.DayStats{Day: start.Format(time.DateOnly), Sessions: map[model.Harness]int{}, Outcomes: []model.OutcomeSum{},
-		Experiments: []model.ExperimentSum{}}
+		Experiments: []model.ExperimentSum{}, PingContext: []model.PingContextSum{}}
 
 	rows, err := s.db.QueryContext(ctx, `SELECT harness, COUNT(*) FROM sightings WHERE day=? GROUP BY harness`, out.Day)
 	if err != nil {
@@ -702,6 +706,32 @@ func (s *Store) DayStats(ctx context.Context, day time.Time) (model.DayStats, er
 	if err := rows.Err(); err != nil {
 		return out, err
 	}
-	out.Experiments, err = s.experimentDay(ctx, lo, hi)
+	if out.Experiments, err = s.experimentDay(ctx, lo, hi); err != nil {
+		return out, err
+	}
+	out.PingContext, err = s.pingContextDay(ctx, lo, hi)
 	return out, err
+}
+
+// pingContextDay counts the pings sent in [lo, hi) per harness, model and
+// context bucket. Pings from before the context size was recorded are left
+// out.
+func (s *Store) pingContextDay(ctx context.Context, lo, hi int64) ([]model.PingContextSum, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT harness, model, MIN(context_tokens, ?) / ? * ? AS bucket, COUNT(*)
+		FROM pings WHERE sent_at >= ? AND sent_at < ? AND context_tokens > 0 AND harness != ''
+		GROUP BY harness, model, bucket ORDER BY harness, model, bucket`,
+		model.PingContextMax, model.PingContextBucket, model.PingContextBucket, lo, hi)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.PingContextSum{}
+	for rows.Next() {
+		var c model.PingContextSum
+		if err := rows.Scan(&c.Harness, &c.Model, &c.FromTokens, &c.Pings); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }

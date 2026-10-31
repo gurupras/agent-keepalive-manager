@@ -241,6 +241,10 @@ type PingRecord struct {
 	// Experiment marks a ping sent by an experiment's treatment arm into a
 	// session the harness reported as working (docs/experiments.md).
 	Experiment bool `json:"experiment,omitempty"`
+	// ContextTokens is the session's context size when the ping was sent:
+	// the prompt the ping keeps warm. Zero for pings from before it was
+	// recorded.
+	ContextTokens int64 `json:"contextTokens,omitempty"`
 }
 
 // Outcome of a ledger segment.
@@ -388,6 +392,31 @@ type DayStats struct {
 	// Experiments sums the experiment episodes closed on the day; empty
 	// when the install does not take part.
 	Experiments []ExperimentSum `json:"experiments"`
+	// PingContext counts the pings sent on the day by the context size they
+	// were sent at.
+	PingContext []PingContextSum `json:"pingContext"`
+}
+
+// PingContextBucket is the width of a PingContextSum bucket, in tokens.
+// Pings at PingContextMax tokens or more share the last bucket.
+const (
+	PingContextBucket = 50_000
+	PingContextMax    = 1_000_000
+)
+
+// PingContextBucketOf is the start of the bucket a context size falls in.
+func PingContextBucketOf(tokens int64) int64 {
+	return min(max(tokens, 0), PingContextMax) / PingContextBucket * PingContextBucket
+}
+
+// PingContextSum counts the pings sent on a day to sessions of one harness
+// and model whose context was FromTokens to FromTokens+PingContextBucket
+// (PingContextMax: that many or more).
+type PingContextSum struct {
+	Harness    Harness `json:"harness"`
+	Model      string  `json:"model"`
+	FromTokens int64   `json:"fromTokens"`
+	Pings      int     `json:"pings"`
 }
 
 // DayPlans counts the plans started on a day.

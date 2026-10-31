@@ -38,7 +38,8 @@ type job struct {
 // treat: a treatment ping of the plan's episode. Requires s.mu.
 func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess model.Session, treat bool) (job, bool) {
 	id := newPingID()
-	rec := store.Ping{PingRecord: model.PingRecord{ID: id, Key: sess.Key, SentAt: now, State: model.PingSending}}
+	rec := store.Ping{PingRecord: model.PingRecord{ID: id, Key: sess.Key, SentAt: now, State: model.PingSending,
+		ContextTokens: sess.ContextTokens}, Harness: sess.Harness}
 	mdl := sess.Model
 	var newSeg *store.Segment
 	if pr != nil {
@@ -71,6 +72,7 @@ func (s *Service) newPing(ctx context.Context, now time.Time, pr *planRun, sess 
 			mdl = pr.seg.Model
 		}
 	}
+	rec.Model = mdl
 	if err := s.cfg.Store.InsertPing(context.WithoutCancel(ctx), rec, newSeg); err != nil {
 		s.log.Error("scheduler: recording ping failed", "key", sess.Key, "err", err)
 		return job{}, false
@@ -130,14 +132,15 @@ func (s *Service) commit(ctx context.Context, j job, err error) model.PingRecord
 			pp.Pings++
 			pp.deliveryErr, pp.LastError = "", ""
 		}
-		s.log.Info("scheduler: ping delivered", "key", j.sess.Key, "ping", j.id)
+		s.log.Info("scheduler: ping delivered", "key", j.sess.Key, "ping", j.id, "context", p.ContextTokens)
 	} else {
 		p.State, p.Error = model.PingFailed, err.Error()
 		delete(s.pings, j.id)
 		// Stored before the plan reacts, so a segment booked now does not
 		// count it.
 		s.savePing(ctx, p)
-		s.log.Warn("scheduler: ping delivery failed", "key", j.sess.Key, "ping", j.id, "err", err)
+		s.log.Warn("scheduler: ping delivery failed", "key", j.sess.Key, "ping", j.id, "context", p.ContextTokens,
+			"err", err)
 		if pp != nil {
 			pp.lastTry = now
 			if errors.Is(err, model.ErrSessionChanged) {
