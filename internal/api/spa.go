@@ -66,6 +66,9 @@ func newUI(files, addon fs.FS, token, frameAncestors string) (*ui, error) {
 			tags.WriteString(`<link rel="stylesheet" href="./addon/` + AddonStyle + `">`)
 		}
 		if st, err := fs.Stat(addon, AddonScript); err == nil && !st.IsDir() {
+			// The meta tag tells the app to import the add-on and call its
+			// setup (docs/api.md, "Add-on API").
+			tags.WriteString(`<meta name="ka-addon" content="">`)
 			tags.WriteString(`<script type="module" src="./addon/` + AddonScript + `"></script>`)
 		}
 	}

@@ -69,7 +69,7 @@ The UI uses relative URLs and hash routing, so it works at any path prefix, incl
 - `PORT` (or `--port`) is taken exactly; `--data-dir` / `$AGENT_KEEPALIVE_DATA_DIR` sets state.
 - `--exit-on-stdin-eof` ends the server when the supervisor goes away.
 - `--no-update` turns self-update off (the supervisor owns the binary).
-- `--ui-addon <dir>` serves `<dir>` under `addon/` and links its `addon.css` and `addon.js` into the page, so the host can restyle the UI: the palette is the `--ka-*` CSS variables, and `<html data-theme="light|dark">` picks the scheme.
+- `--ui-addon <dir>` serves `<dir>` under `addon/` and links its `addon.css` and `addon.js` into the page, so the host can restyle the UI: the palette is the `--ka-*` CSS variables, and `<html data-theme="light|dark">` picks the scheme. An `addon.js` that exports `setup` also gets the add-on API, which adds buttons to the UI (api.md, "Add-on API").
 - Two schedulers never run against the same sessions: a second instance (any data dir) that finds the standalone one running proxies to it.
 
 ## Security

@@ -19,32 +19,33 @@ The token is what keeps other local users and other programs out: the server bin
 - The page is served with `Cache-Control: no-store`, because it carries the token.
 - Framing: the CSP has `frame-ancestors 'self'` (plus `X-Frame-Options: SAMEORIGIN`) by default. An embedder that frames the UI from another origin passes `--frame-ancestors "<sources>"` (or `$AGENT_KEEPALIVE_FRAME_ANCESTORS`), for example `--frame-ancestors "'self' http://*.localhost:*"`; `X-Frame-Options` is then omitted.
 
-## Slots
+## Add-on API
 
-A page that frames the UI can add its own buttons to some places in it, the slots. Only messages from the parent window are heard, and `frame-ancestors` decides which pages may be the parent.
+A host that embeds the UI can add its own buttons to some places in it, the slots, from an add-on: a JavaScript module at `./addon/addon.js`, relative to the UI page. `--ui-addon <dir>` serves one (architecture.md, "Embedding under a supervisor"); a proxy in front of the UI can serve its own instead. The contract:
+
+- The page carries `<meta name="ka-addon">` (its content is ignored) and `<script type="module" src="./addon/addon.js">`. `--ui-addon` adds both when the directory has an `addon.js`; a proxy that serves the add-on itself adds both to the page.
+- When the meta tag is there, the app imports `./addon/addon.js` once it has started and, if the module exports `setup`, calls `setup(ka)` (and awaits it). Keep the script tag's address exactly `./addon/addon.js`, with no query string, so the browser runs the module once; a different address is a second copy of the module.
+- An error in `setup`, or in a click handler, is logged to the console and leaves the UI running.
+
+`ka` stays usable after `setup` returns:
+
+| Member | Meaning |
+|---|---|
+| `ka.api` | The API version, `1`. Later versions only add to it, so check `ka.api >= 1`. |
+| `ka.slots.names` | The slots this UI has. |
+| `ka.slots.set(slot, items, onClick)` | Replaces the slot's items and its click handler; `[]` clears it. Returns `false` for a slot this UI does not have. |
 
 | Slot | Where |
 |---|---|
 | `plan-actions` | a running plan's controls: next to **Extend**, **Ping now** and **Stop** in the details, and in the gear menu in the session list |
 
-Messages are `postMessage` objects:
-
-| Direction | Message |
-|---|---|
-| UI → parent | `{type: "agent-keepalive:ready", slots: ["plan-actions"]}` once the UI has loaded (target `*`; it carries nothing else) |
-| parent → UI | `{type: "agent-keepalive:slot", slot, items: [{id, label, title?, icon?, danger?}]}` sets the slot's items, replacing earlier ones; `[]` clears it |
-| UI → parent | `{type: "agent-keepalive:slot-click", slot, item, session: {key, harness, id, cwd, project, title}}` when an item is clicked, sent only to the origin that set the items |
-
-Send the items after `ready`; messages sent before it are lost. An item needs an `id` (up to 64 characters, unique in the slot) and a `label` (up to 40); `title` is its tooltip, `icon` one of the icon names the UI bundles (`web/src/icons/names.ts`, others are dropped), and `danger: true` shows it in red. At most 8 items are kept. A sandboxed parent (origin `null`) is ignored.
+An item is `{id, label, title?, icon?, danger?}`: `id` up to 64 characters and unique in the slot, `label` up to 40, `title` its tooltip, `icon` one of the icon names the UI bundles (`web/src/icons/names.ts`; others are dropped) and `danger: true` shows it in red. At most 8 items are kept. `onClick(id, session)` gets the item's id and the session, `{key, harness, id, cwd, project, title}`.
 
 ```js
-window.addEventListener('message', e => {
-  if (e.source !== frame.contentWindow) return
-  if (e.data.type === 'agent-keepalive:ready')
-    e.source.postMessage({ type: 'agent-keepalive:slot', slot: 'plan-actions',
-      items: [{ id: 'terminal', label: 'Open terminal', icon: 'lucide:terminal' }] }, e.origin)
-  if (e.data.type === 'agent-keepalive:slot-click') openTerminal(e.data.session.cwd)
-})
+export function setup (ka) {
+  ka.slots.set('plan-actions', [{ id: 'terminal', label: 'Open terminal', icon: 'lucide:terminal' }],
+    (id, session) => openTerminal(session.cwd))
+}
 ```
 
 ## Routes

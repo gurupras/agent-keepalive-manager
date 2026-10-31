@@ -1,11 +1,9 @@
 import { reactive } from 'vue'
 import { iconNames, type IconName } from '../icons/names'
-import type { SessionView } from '../api/types'
+import type { Harness, SessionView } from '../api/types'
 
-// Slots: places in the UI where the page that frames it adds its own
-// buttons (docs/api.md, "Slots"). The parent posts the items for a slot; a
-// click on one is posted back to it with the session. Only the parent
-// window is heard: frame-ancestors decides which pages may be it.
+// Slots: places in the UI where the page's add-on (--ui-addon) adds its own
+// buttons through the API it gets in setup(ka) (docs/api.md, "Add-on API").
 
 export const SLOTS = ['plan-actions'] as const
 export type SlotName = typeof SLOTS[number]
@@ -20,13 +18,24 @@ export interface SlotItem {
   danger?: boolean
 }
 
+/** the session an item was clicked for, as the add-on sees it */
+export interface SlotSession {
+  key: string
+  harness: Harness
+  id: string
+  cwd: string
+  project: string
+  title: string
+}
+
+export type SlotClick = (item: string, session: SlotSession) => unknown
+
 const MAX_ITEMS = 8
 
-/** slots holds the parent's items, by slot. */
+/** slots holds the add-on's items, by slot. */
 export const slots = reactive<Record<SlotName, SlotItem[]>>({ 'plan-actions': [] })
 
-/** the origin of the parent that set the items; clicks go only to it */
-let owner = ''
+const handlers: Partial<Record<SlotName, SlotClick>> = {}
 
 const isSlot = (v: unknown): v is SlotName => SLOTS.includes(v as SlotName)
 const isIcon = (v: unknown): v is IconName => iconNames.includes(v as IconName)
@@ -53,29 +62,24 @@ export function parseItems (v: unknown): SlotItem[] {
   return out
 }
 
-function onMessage (e: MessageEvent) {
-  // A sandboxed parent's origin is "null", which postMessage cannot target.
-  if (e.source !== window.parent || e.origin === 'null') return
-  const d = e.data as { type?: unknown, slot?: unknown, items?: unknown } | null
-  if (!d || typeof d !== 'object' || d.type !== 'agent-keepalive:slot' || !isSlot(d.slot)) return
-  owner = e.origin
-  slots[d.slot] = parseItems(d.items)
+/**
+ * setSlot replaces a slot's items and its click handler; it reports
+ * whether the slot exists. An empty list clears the slot.
+ */
+export function setSlot (slot: unknown, items: unknown, onClick?: unknown): boolean {
+  if (!isSlot(slot)) return false
+  slots[slot] = parseItems(items)
+  if (typeof onClick === 'function') handlers[slot] = onClick as SlotClick
+  else delete handlers[slot]
+  return true
 }
 
-/** watchSlots listens to the parent, when framed, and tells it the UI is ready. */
-export function watchSlots () {
-  if (window.parent === window) return
-  window.addEventListener('message', onMessage)
-  window.parent.postMessage({ type: 'agent-keepalive:ready', slots: SLOTS }, '*')
-}
-
-/** pickSlot tells the parent that an item was clicked for a session. */
-export function pickSlot (slot: SlotName, item: SlotItem, s: SessionView) {
-  if (!owner) return
-  window.parent.postMessage({
-    type: 'agent-keepalive:slot-click',
-    slot,
-    item: item.id,
-    session: { key: s.key, harness: s.harness, id: s.id, cwd: s.cwd, project: s.project, title: s.title },
-  }, owner)
+/** pickSlot hands a click on an item to the add-on's handler. */
+export async function pickSlot (slot: SlotName, item: SlotItem, s: SessionView) {
+  const session: SlotSession = Object.freeze({ key: s.key, harness: s.harness, id: s.id, cwd: s.cwd, project: s.project, title: s.title })
+  try {
+    await handlers[slot]?.(item.id, session)
+  } catch (e) {
+    console.error(`agent-keepalive: add-on click handler for ${slot} failed`, e)
+  }
 }

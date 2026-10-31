@@ -84,7 +84,7 @@ func TestAddon(t *testing.T) {
 	w := e.do("GET", "/", "", nil)
 	body := w.Body.String()
 	css := strings.Index(body, `<link rel="stylesheet" href="./addon/addon.css">`)
-	js := strings.Index(body, `<script type="module" src="./addon/addon.js"></script>`)
+	js := strings.Index(body, `<meta name="ka-addon" content=""><script type="module" src="./addon/addon.js"></script>`)
 	if css < 0 || js < 0 || css > strings.Index(body, "</head>") {
 		t.Fatalf("addon links: %s", body)
 	}
@@ -99,7 +99,7 @@ func TestAddon(t *testing.T) {
 
 	// Only the files that exist are linked.
 	only := newEnv(t, func(o *Options) { o.Addon = fstest.MapFS{"addon.css": {Data: []byte("")}} })
-	if b := only.do("GET", "/", "", nil).Body.String(); strings.Contains(b, "addon.js") || !strings.Contains(b, "addon.css") {
+	if b := only.do("GET", "/", "", nil).Body.String(); strings.Contains(b, "addon.js") || strings.Contains(b, "ka-addon") || !strings.Contains(b, "addon.css") {
 		t.Fatal(b)
 	}
 	// Without --ui-addon there is no addon/ route: it falls to the UI.
