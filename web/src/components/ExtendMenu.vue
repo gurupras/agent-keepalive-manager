@@ -28,7 +28,7 @@ async function pick (h: number) {
     >
       <AppIcon :name="busy ? 'lucide:loader-circle' : 'lucide:plus'" :spin="!!busy" /> Extend
     </button>
-    <div v-if="open" :id="id" role="menu" class="absolute right-0 z-30 mt-1 w-56 rounded-lg border border-line bg-surface p-1 shadow-pop">
+    <div v-if="open" :id="id" role="menu" class="absolute left-0 z-30 mt-1 w-56 max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-surface p-1 shadow-pop">
       <button
         v-for="h in steps" :key="h" type="button" role="menuitem" class="menu-item text-ink-1"
         @click="pick(h)"
