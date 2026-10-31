@@ -1,12 +1,14 @@
 import { reactive } from 'vue'
 import { iconNames, type IconName } from '../icons/names'
-import type { Harness, SessionView } from '../api/types'
+import type { SessionView } from '../api/types'
+import type { AddonClick, AddonSession, AddonSlot } from '../addon-api'
 
 // Slots: places in the UI where the page's add-on (--ui-addon) adds its own
-// buttons through the API it gets in setup(ka) (docs/api.md, "Add-on API").
+// buttons through the API it gets in setup(ka) (docs/api.md, "Add-on API";
+// the types are in addon-api.d.ts).
 
-export const SLOTS = ['plan-actions', 'session-actions'] as const
-export type SlotName = typeof SLOTS[number]
+export type SlotName = AddonSlot
+export const SLOTS = ['plan-actions', 'session-actions'] as const satisfies readonly SlotName[]
 
 export interface SlotItem {
   id: string
@@ -20,17 +22,8 @@ export interface SlotItem {
   visible?: (session: SlotSession) => unknown
 }
 
-/** the session an item was clicked for, as the add-on sees it */
-export interface SlotSession {
-  key: string
-  harness: Harness
-  id: string
-  cwd: string
-  project: string
-  title: string
-}
-
-export type SlotClick = (item: string, session: SlotSession) => unknown
+export type SlotSession = AddonSession
+export type SlotClick = AddonClick
 
 const MAX_ITEMS = 8
 

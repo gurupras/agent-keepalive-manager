@@ -27,6 +27,8 @@ A host that embeds the UI can add its own buttons to some places in it, the slot
 - When the meta tag is there, the app imports `./addon/addon.js` once it has started and, if the module exports `setup`, calls `setup(ka)` (and awaits it). Keep the script tag's address exactly `./addon/addon.js`, with no query string, so the browser runs the module once; a different address is a second copy of the module.
 - An error in `setup`, or in a click handler, is logged to the console and leaves the UI running.
 
+The types are in [`web/src/addon-api.d.ts`](https://github.com/gurupras/agent-keepalive-manager/blob/main/web/src/addon-api.d.ts); the app's own code is checked against that file, so it is the contract. Copy it into an add-on's project to type-check against it.
+
 `ka` stays usable after `setup` returns:
 
 | Member | Meaning |

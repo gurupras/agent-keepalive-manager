@@ -1,4 +1,5 @@
 import { setSlot, SLOTS } from './slots'
+import type { AddonApi } from '../addon-api'
 
 // The add-on (docs/api.md, "Add-on API"): when the page carries
 // <meta name="ka-addon">, the app imports ./addon/addon.js and, if it
@@ -8,7 +9,7 @@ import { setSlot, SLOTS } from './slots'
 /** API is the add-on API's version; it grows only by additions. */
 export const API = 1
 
-const ka = Object.freeze({
+const ka: AddonApi = Object.freeze({
   api: API,
   slots: Object.freeze({ names: SLOTS, set: setSlot }),
 })
