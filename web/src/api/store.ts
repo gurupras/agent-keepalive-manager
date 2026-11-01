@@ -270,6 +270,12 @@ function onHello (version: string, info: Info) {
     (pending && compareVersions(version, pending.from) > 0)
   if (newer) {
     writeStored('pending-update', undefined)
+    // This page asked for the update: load the new version of the page now
+    // rather than asking for a second reload.
+    if (pending || state.updatePhase !== 'idle') {
+      location.reload()
+      return
+    }
     state.updatePhase = 'idle'
     toast('success', `Updated to ${version}`, {
       body: 'Reload to use the new version of this page.',
@@ -431,6 +437,13 @@ export async function setMetricsEnabled (enabled: boolean): Promise<boolean> {
     body: enabled ? undefined : 'Nothing more is sent, and queued reports were deleted.',
   })
   return true
+}
+
+/** markUsageNoticed records for the install that the usage notice was shown. */
+export async function markUsageNoticed () {
+  try {
+    state.metrics = await transport.request<MetricsStatus>('PUT', 'metrics', { noticed: true })
+  } catch { /* a server from before the flag; this browser still remembers */ }
 }
 
 export async function setExperiments (experiments: boolean): Promise<boolean> {

@@ -228,6 +228,8 @@ export interface MetricsStatus {
   experiments: boolean
   experimentsLocked: boolean
   experimentsLockedBy?: 'admin' | 'profile' | string
+  /** the user has been told, once for the install, that reports are on */
+  noticed?: boolean
 }
 
 export type UpdateState = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'installing' | 'error'

@@ -595,6 +595,21 @@ func TestReportWithoutExperimentsIsSchema1(t *testing.T) {
 	}
 }
 
+// The usage notice is remembered for the install, across restarts.
+func TestMarkNoticed(t *testing.T) {
+	g := newRig(t, t0)
+	if g.r.Status().Noticed {
+		t.Fatal("noticed before")
+	}
+	if err := g.r.MarkNoticed(); err != nil || !g.r.Status().Noticed {
+		t.Fatalf("mark: %v", err)
+	}
+	g.open()
+	if !g.r.Status().Noticed {
+		t.Fatal("forgotten after a restart")
+	}
+}
+
 // Ping context counts make a schema 3 report, sanitised, merged and
 // sorted, with no experiments field when there are none.
 func TestReportPingContext(t *testing.T) {

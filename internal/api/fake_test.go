@@ -214,6 +214,13 @@ func (m *fakeMetrics) SetEnabled(on bool) error {
 	return nil
 }
 
+func (m *fakeMetrics) MarkNoticed() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.st.Noticed = true
+	return nil
+}
+
 func (m *fakeMetrics) SetExperiments(on bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

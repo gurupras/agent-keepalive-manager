@@ -362,12 +362,17 @@ func (h *handler) setMetrics(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Enabled     *bool `json:"enabled"`
 		Experiments *bool `json:"experiments"`
+		Noticed     *bool `json:"noticed"` // only true: the notice is shown once
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Enabled == nil && body.Experiments == nil {
-		writeError(w, http.StatusBadRequest, "give enabled or experiments")
+	if body.Enabled == nil && body.Experiments == nil && body.Noticed == nil {
+		writeError(w, http.StatusBadRequest, "give enabled, experiments or noticed")
+		return
+	}
+	if body.Noticed != nil && !*body.Noticed {
+		writeError(w, http.StatusBadRequest, "noticed can only be set to true")
 		return
 	}
 	if h.opts.Metrics == nil {
@@ -382,6 +387,12 @@ func (h *handler) setMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.Experiments != nil {
 		if err := h.opts.Metrics.SetExperiments(*body.Experiments); err != nil {
+			h.fail(w, r, err)
+			return
+		}
+	}
+	if body.Noticed != nil {
+		if err := h.opts.Metrics.MarkNoticed(); err != nil {
 			h.fail(w, r, err)
 			return
 		}

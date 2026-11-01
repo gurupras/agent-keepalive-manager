@@ -128,6 +128,9 @@ type MetricsStatus struct {
 	Experiments         bool   `json:"experiments"`
 	ExperimentsLocked   bool   `json:"experimentsLocked"`
 	ExperimentsLockedBy string `json:"experimentsLockedBy,omitempty"`
+	// Noticed: the UI has told the user, once for the install, that usage
+	// reports are on.
+	Noticed bool `json:"noticed"`
 }
 
 // Metrics is usage reporting as the API and the CLI use it. Implemented by
@@ -146,6 +149,9 @@ type Metrics interface {
 	Preview() (any, error)
 	// ResetID replaces the install id with a new random one.
 	ResetID() error
+	// MarkNoticed records that the user has been told that usage reports
+	// are on, so that no window tells them again.
+	MarkNoticed() error
 }
 
 // MetricsNotifier is optionally implemented by a Metrics whose status

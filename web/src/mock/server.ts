@@ -504,7 +504,8 @@ export class MockBackend {
       }
       case 'GET metrics': return this.metrics
       case 'PUT metrics': {
-        const b = body as { enabled?: boolean, experiments?: boolean }
+        const b = body as { enabled?: boolean, experiments?: boolean, noticed?: boolean }
+        if (b.noticed) this.metrics = { ...this.metrics, noticed: true }
         if (b.experiments !== undefined) {
           if (this.metrics.experimentsLocked) throw new ApiError('Experiments are locked.', 403)
           this.metrics = { ...this.metrics, experiments: b.experiments }

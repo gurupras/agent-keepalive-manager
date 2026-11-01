@@ -150,6 +150,7 @@ func (r *Reporter) Status() apitypes.MetricsStatus {
 		InstallID: r.installID,
 		LastSent:  r.st.LastSent,
 		LastError: r.st.LastError,
+		Noticed:   r.st.Noticed,
 	}
 	if locked {
 		st.LockedBy = by
@@ -214,6 +215,22 @@ func (r *Reporter) SetEnabled(on bool) error {
 	r.mu.Unlock()
 	r.wake()
 	r.notify()
+	return nil
+}
+
+// MarkNoticed records, for the install, that the user has been told that
+// usage reports are on.
+func (r *Reporter) MarkNoticed() error {
+	r.mu.Lock()
+	changed := !r.st.Noticed
+	if changed {
+		r.st.Noticed = true
+		r.save()
+	}
+	r.mu.Unlock()
+	if changed {
+		r.notify()
+	}
 	return nil
 }
 

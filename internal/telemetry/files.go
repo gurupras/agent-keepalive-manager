@@ -100,6 +100,8 @@ type state struct {
 	// Announced is the version whose first report went out early, the
 	// day's report so far (Reporter.announce).
 	Announced string `json:"announced,omitempty"`
+	// Noticed: the user has been told that usage reports are on.
+	Noticed bool `json:"noticed,omitempty"`
 }
 
 func loadState(dataDir string) (state, bool) {

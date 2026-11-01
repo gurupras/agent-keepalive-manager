@@ -238,6 +238,12 @@ func TestMetricsRoutes(t *testing.T) {
 		t.Fatal("not disabled")
 	}
 	wantStatus(t, e.do("PUT", "/api/metrics", `{}`, nil), 400)
+	wantStatus(t, e.do("PUT", "/api/metrics", `{"noticed":false}`, nil), 400)
+	w = e.do("PUT", "/api/metrics", `{"noticed":true}`, nil)
+	wantStatus(t, w, 200)
+	if !decodeBody[apitypes.MetricsStatus](t, w).Noticed {
+		t.Fatal("not noticed")
+	}
 	e.met.st.Locked = true
 	wantStatus(t, e.do("PUT", "/api/metrics", `{"enabled":true}`, nil), 403)
 	wantStatus(t, e.do("GET", "/api/metrics/preview", "", nil), 200)

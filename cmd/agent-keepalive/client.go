@@ -113,6 +113,10 @@ func (m remoteMetrics) Preview() (any, error) {
 
 func (m remoteMetrics) ResetID() error { return m.c.do("POST", "api/metrics/reset-id", nil, nil) }
 
+func (m remoteMetrics) MarkNoticed() error {
+	return m.c.do("PUT", "api/metrics", map[string]bool{"noticed": true}, nil)
+}
+
 // remoteUpdater is apitypes.Updater over a running server's API. It has no
 // events; callers poll Status.
 type remoteUpdater struct {
