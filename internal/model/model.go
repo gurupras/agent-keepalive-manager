@@ -210,6 +210,18 @@ type Plan struct {
 	// Blocked is set while the plan wants to ping but cannot (session busy
 	// for too long, unreachable, an earlier ping not consumed yet).
 	Blocked string `json:"blocked,omitempty"`
+	// Project is set when the project's rule started the plan.
+	Project string `json:"project,omitempty"`
+}
+
+// ProjectRule keeps a whole project warm with one plan setting: every live
+// session of Project without a plan gets one, for Hours or Indefinite, as
+// sessions come and go.
+type ProjectRule struct {
+	Project    string    `json:"project"`
+	Hours      float64   `json:"hours,omitempty"`
+	Indefinite bool      `json:"indefinite,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"` // when the rule was set or last changed
 }
 
 // PingState is the lifecycle of one ping.

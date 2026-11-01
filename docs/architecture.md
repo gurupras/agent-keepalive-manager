@@ -56,6 +56,8 @@ Read-only discovery, never keystrokes:
 
 Every ping carries a `[keepalive id=…]` marker, so scanners tell pings from real prompts. A plan pings at `TTL − margin` after the last API call of any kind, never while the session is working (except in the ping arm of an [experiment](experiments.md) on a quiet session), and verifies each ping against the transcript (a reply that re-wrote the whole context is `cold`).
 
+Project rules keep a whole project warm with one setting (hours, or indefinite): on every scan, a reachable session whose `project` (its repository root, else its working folder) has a rule and which has no plan gets one, so agents that start later, `/clear` or restart are covered too. A session whose last plan ended after the rule was set is left alone if the user cancelled that plan, and otherwise until its next human prompt (a plan that ran out is not restarted at once). Changing a rule changes the plans it started, from now; removing it cancels them. Plans the user started by hand keep their own setting.
+
 Ledger semantics: an idle segment starts at the last real activity and ends when the user returns (saved = context × (write − read) − ping cost, only if the gap exceeded the TTL), when the plan ends or the session exits (wasted = ping cost), or when a ping finds the cache cold.
 
 ## Live updates: WebSocket, not SSE

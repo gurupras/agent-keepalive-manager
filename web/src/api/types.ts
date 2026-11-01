@@ -50,6 +50,16 @@ export interface Plan {
   lastError?: string
   /** set while the plan wants to ping but cannot */
   blocked?: string
+  /** set when the project's rule started the plan */
+  project?: string
+}
+
+/** ProjectRule keeps every session of a project warm with one plan setting. */
+export interface ProjectRule {
+  project: string
+  hours?: number
+  indefinite?: boolean
+  createdAt: string
 }
 
 export interface SessionView {
@@ -282,6 +292,7 @@ export type ServerEvent =
   | { type: 'settings', data: Settings }
   | { type: 'update', data: UpdateStatus }
   | { type: 'metrics', data: MetricsStatus }
+  | { type: 'projects', data: ProjectRule[] | null }
   | { type: 'startup', data: Startup }
 
 export type EventType = ServerEvent['type']

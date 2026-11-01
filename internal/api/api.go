@@ -132,6 +132,11 @@ func New(opts Options) (http.Handler, error) {
 		route("DELETE sessions/{key}/plan", h.cancelPlan)
 		route("POST sessions/{key}/ping", h.ping)
 		route("GET sessions/{key}/pings", h.pings)
+		if _, ok := opts.Service.(model.Projects); ok {
+			route("GET projects", h.projects)
+			route("PUT projects", h.setProject)
+			route("DELETE projects", h.removeProject)
+		}
 		route("GET ledger", h.ledger)
 		route("GET missed", h.missed)
 		route("GET settings", h.settings)
@@ -270,6 +275,51 @@ func (h *handler) changePlan(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) cancelPlan(w http.ResponseWriter, r *http.Request) {
 	if err := h.opts.Service.CancelPlan(r.Context(), key(r)); err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *handler) projects(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, nonNil(h.opts.Service.(model.Projects).ProjectRules()))
+}
+
+func (h *handler) setProject(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Project    string   `json:"project"`
+		Hours      *float64 `json:"hours"`
+		Indefinite bool     `json:"indefinite"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	rule := model.ProjectRule{Project: body.Project, Indefinite: body.Indefinite}
+	switch {
+	case body.Indefinite && body.Hours != nil:
+		writeError(w, http.StatusBadRequest, "give either hours or indefinite, not both")
+		return
+	case !body.Indefinite && body.Hours == nil:
+		writeError(w, http.StatusBadRequest, "give hours or indefinite")
+		return
+	case body.Hours != nil:
+		if !positive(w, "hours", *body.Hours) {
+			return
+		}
+		rule.Hours = *body.Hours
+	}
+	rule, err := h.opts.Service.(model.Projects).SetProjectRule(r.Context(), rule)
+	h.reply(w, r, http.StatusOK, rule, err)
+}
+
+func (h *handler) removeProject(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		writeError(w, http.StatusBadRequest, "give ?project=")
+		return
+	}
+	if err := h.opts.Service.(model.Projects).RemoveProjectRule(r.Context(), project); err != nil {
 		h.fail(w, r, err)
 		return
 	}

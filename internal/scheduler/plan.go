@@ -353,6 +353,7 @@ func (s *Service) endPlan(ctx context.Context, at time.Time, pr *planRun, state 
 		s.persist(ctx, pr)
 	}
 	delete(s.plans, pr.Key)
+	s.lastPlans[pr.Key] = &lastPlan{state: state, endedAt: at}
 	s.log.Info("scheduler: plan ended", "plan", pr.ID, "key", pr.Key, "state", state, "by", endedBy, "reason", pr.Reason)
 	s.publish("plan", pr.Plan.Plan)
 }

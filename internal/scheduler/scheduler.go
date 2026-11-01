@@ -130,6 +130,9 @@ type Service struct {
 	subs      map[int]chan model.Event
 	nextSub   int
 
+	rules     map[string]model.ProjectRule // by project
+	lastPlans map[string]*lastPlan         // by session key, read lazily; nil: never had a plan
+
 	expSalt     string          // assigns episodes to arms
 	expStopped  map[string]bool // experiments the stop rule ended on this install
 	expDay      string          // UTC day expPings, expCost and expEpisodes count
@@ -180,6 +183,8 @@ func New(cfg Config) (*Service, error) {
 		sighted:     map[string]bool{},
 		subs:        map[int]chan model.Event{},
 		expStopped:  map[string]bool{},
+		rules:       map[string]model.ProjectRule{},
+		lastPlans:   map[string]*lastPlan{},
 	}
 	for _, src := range cfg.Sources {
 		s.sources[src.Harness()] = src
@@ -217,6 +222,13 @@ func (s *Service) restore(ctx context.Context) error {
 	}
 	if err := s.restoreExperiments(ctx); err != nil {
 		return err
+	}
+	rules, err := st.ProjectRules(ctx)
+	if err != nil {
+		return fmt.Errorf("scheduler: load project rules: %w", err)
+	}
+	for _, r := range rules {
+		s.rules[r.Project] = r
 	}
 	if s.totals, err = st.TotalsByKey(ctx); err != nil {
 		return fmt.Errorf("scheduler: load totals: %w", err)
@@ -384,6 +396,7 @@ func (s *Service) tick(ctx context.Context) {
 	s.applyScan(ctx, now, results)
 	s.consumeAll(ctx, now)
 	s.settlePings(ctx, now)
+	s.applyRules(ctx)
 	var jobs []job
 	for _, key := range sortedKeys(s.plans) {
 		if pr := s.plans[key]; pr != nil {

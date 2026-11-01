@@ -142,7 +142,7 @@ type Plan struct {
 
 const planCols = `id, key, pid, proc_start, hours, requested_hours, started_at, until, state, indefinite,
 	ended_at, next_ping, pings, ping_cost, reason, last_error, cold_streak, wait_warm, last_seen,
-	base_from, base_context, base_model, last_ping_at`
+	base_from, base_context, base_model, last_ping_at, project`
 
 func scanPlan(sc scanner) (Plan, error) {
 	var p Plan
@@ -150,7 +150,7 @@ func scanPlan(sc scanner) (Plan, error) {
 	var indef, wait int
 	err := sc.Scan(&p.ID, &p.Key, &p.PID, &p.ProcStart, &p.Hours, &p.RequestedHours, &started, &until, &p.State,
 		&indef, &ended, &next, &p.Pings, &p.PingCost, &p.Reason, &p.LastError, &p.ColdStreak, &wait, &seen,
-		&base, &p.BaseContext, &p.BaseModel, &lastPing)
+		&base, &p.BaseContext, &p.BaseModel, &lastPing, &p.Project)
 	p.StartedAt, p.Until, p.EndedAt, p.NextPing = fromMS(started), fromMS(until), fromMS(ended), fromMS(next)
 	p.LastSeen, p.BaseFrom, p.LastPingAt = fromMS(seen), fromMS(base), fromMS(lastPing)
 	p.Indefinite, p.WaitWarm = indef != 0, wait != 0
@@ -160,19 +160,20 @@ func scanPlan(sc scanner) (Plan, error) {
 func planArgs(p Plan) []any {
 	return []any{p.Key, p.PID, p.ProcStart, p.Hours, p.RequestedHours, ms(p.StartedAt), ms(p.Until), p.State,
 		b2i(p.Indefinite), ms(p.EndedAt), ms(p.NextPing), p.Pings, p.PingCost, p.Reason, p.LastError,
-		p.ColdStreak, b2i(p.WaitWarm), ms(p.LastSeen), ms(p.BaseFrom), p.BaseContext, p.BaseModel, ms(p.LastPingAt)}
+		p.ColdStreak, b2i(p.WaitWarm), ms(p.LastSeen), ms(p.BaseFrom), p.BaseContext, p.BaseModel, ms(p.LastPingAt),
+		p.Project}
 }
 
 const planSet = `key=?, pid=?, proc_start=?, hours=?, requested_hours=?, started_at=?, until=?, state=?,
 	indefinite=?, ended_at=?, next_ping=?, pings=?, ping_cost=?, reason=?, last_error=?, cold_streak=?,
-	wait_warm=?, last_seen=?, base_from=?, base_context=?, base_model=?, last_ping_at=?`
+	wait_warm=?, last_seen=?, base_from=?, base_context=?, base_model=?, last_ping_at=?, project=?`
 
 // InsertPlan stores a new plan and returns it with its ID set.
 func (s *Store) InsertPlan(ctx context.Context, p Plan) (Plan, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO plans (key, pid, proc_start, hours, requested_hours, started_at,
 		until, state, indefinite, ended_at, next_ping, pings, ping_cost, reason, last_error, cold_streak, wait_warm,
-		last_seen, base_from, base_context, base_model, last_ping_at)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, planArgs(p)...)
+		last_seen, base_from, base_context, base_model, last_ping_at, project)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, planArgs(p)...)
 	if err != nil {
 		return p, err
 	}
@@ -223,6 +224,53 @@ func (s *Store) OpenPlans(ctx context.Context) ([]Plan, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// LastPlan returns the newest plan of a session, or false if it never had
+// one.
+func (s *Store) LastPlan(ctx context.Context, key string) (Plan, bool, error) {
+	p, err := scanPlan(s.db.QueryRowContext(ctx, `SELECT `+planCols+` FROM plans WHERE key=? ORDER BY id DESC LIMIT 1`, key))
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, false, nil
+	}
+	return p, err == nil, err
+}
+
+// ---- project rules ----
+
+// ProjectRules returns every project rule, by project.
+func (s *Store) ProjectRules(ctx context.Context) ([]model.ProjectRule, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT project, hours, indefinite, created_at FROM project_rules ORDER BY project`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []model.ProjectRule
+	for rows.Next() {
+		var r model.ProjectRule
+		var indef int
+		var created int64
+		if err := rows.Scan(&r.Project, &r.Hours, &indef, &created); err != nil {
+			return nil, err
+		}
+		r.Indefinite, r.CreatedAt = indef != 0, fromMS(created)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// SaveProjectRule adds or replaces the rule of r.Project.
+func (s *Store) SaveProjectRule(ctx context.Context, r model.ProjectRule) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO project_rules(project, hours, indefinite, created_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(project) DO UPDATE SET hours=excluded.hours, indefinite=excluded.indefinite, created_at=excluded.created_at`,
+		r.Project, r.Hours, b2i(r.Indefinite), ms(r.CreatedAt))
+	return err
+}
+
+// DeleteProjectRule removes the rule of project, if there is one.
+func (s *Store) DeleteProjectRule(ctx context.Context, project string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM project_rules WHERE project=?`, project)
+	return err
 }
 
 // ---- segments ----

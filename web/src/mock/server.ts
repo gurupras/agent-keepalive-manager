@@ -7,7 +7,7 @@
 //   update=apply|command|download|none   what the update toast offers
 //   metrics=on|off|admin|profile|none    usage reports state (admin/profile: locked)
 import type {
-  Costs, Info, LedgerEntry, MetricsStatus, Missed, Plan, PingRecord, PingState,
+  Costs, Info, LedgerEntry, MetricsStatus, Missed, Plan, PingRecord, PingState, ProjectRule,
   ServerEvent, SessionView, Settings, Totals, UpdateAction, UpdateStatus,
 } from '../api/types'
 import { ApiError, type LinkState, type Transport } from '../api/transport'
@@ -81,6 +81,7 @@ export class MockBackend {
   info: Info
   update: UpdateStatus
   metrics: MetricsStatus
+  projectRules: ProjectRule[] = []
   stopped = false
   private planSeq = 100
   private pingSeq = 0
@@ -397,6 +398,7 @@ export class MockBackend {
   private hello () {
     this.emit({ type: 'hello', data: { version: this.info.version, info: this.info } })
     this.emit({ type: 'sessions', data: this.sessions })
+    this.emit({ type: 'projects', data: this.projectRules })
   }
 
   private find (key: string) {
@@ -501,6 +503,23 @@ export class MockBackend {
         this.settings = { ...s }
         this.emitLater({ type: 'settings', data: this.settings }, 50)
         return this.settings
+      }
+      case 'GET projects': return this.projectRules
+      case 'PUT projects': {
+        const b = body as { project?: string, hours?: number, indefinite?: boolean }
+        if (!b.project?.startsWith('/')) throw new ApiError('project must be an absolute path', 400)
+        if (!b.indefinite && !(b.hours! > 0 && b.hours! <= this.settings.maxHours)) throw new ApiError(`hours must be in (0, ${this.settings.maxHours}]`, 400)
+        const r: ProjectRule = { project: b.project, createdAt: iso(now), ...(b.indefinite ? { indefinite: true } : { hours: b.hours }) }
+        this.projectRules = [...this.projectRules.filter(x => x.project !== r.project), r]
+        this.emitLater({ type: 'projects', data: this.projectRules }, 50)
+        return r
+      }
+      case 'DELETE projects': {
+        const project = query.get('project')
+        if (!this.projectRules.some(x => x.project === project)) throw new ApiError('No rule for that project.', 404)
+        this.projectRules = this.projectRules.filter(x => x.project !== project)
+        this.emitLater({ type: 'projects', data: this.projectRules }, 50)
+        return undefined
       }
       case 'GET metrics': return this.metrics
       case 'PUT metrics': {

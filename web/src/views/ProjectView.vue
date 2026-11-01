@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import ColdList from '../components/ColdList.vue'
 import PageHeader from '../components/PageHeader.vue'
+import ProjectKeep from '../components/ProjectKeep.vue'
 import SessionCard from '../components/SessionCard.vue'
 import SessionTable from '../components/SessionTable.vue'
 import StatsStrip from '../components/StatsStrip.vue'
@@ -27,6 +28,8 @@ const cold = computed(() => rows.value.filter(r => !isLive(r)).sort(coldOrder))
       <AppIcon :name="pinned[id] ? 'lucide:pin-off' : 'lucide:pin'" />{{ pinned[id] ? 'Unpin' : 'Pin' }}
     </button>
   </PageHeader>
+
+  <ProjectKeep :project="id" />
 
   <StatsStrip :rows="rows" :project="id" />
 

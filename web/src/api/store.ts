@@ -1,12 +1,12 @@
 import { reactive } from 'vue'
 import type {
-  Info, LedgerEntry, LedgerResponse, MetricsStatus, Missed, Plan, PingRecord,
+  Info, LedgerEntry, LedgerResponse, MetricsStatus, Missed, Plan, PingRecord, ProjectRule,
   ServerEvent, SessionView, Settings, Startup, Totals, UpdateStatus,
 } from './types'
 import { ApiError, httpTransport, type LinkState, type Transport } from './transport'
 import { errorText, toast, toastError } from '../composables/toasts'
 import { compareVersions, sessionTitle } from '../lib/derive'
-import { hoursLabel, money } from '../lib/format'
+import { baseName, hoursLabel, money } from '../lib/format'
 import { readStored, writeStored } from '../composables/persisted'
 
 export const POLL_MS = 10_000
@@ -43,6 +43,8 @@ function initialState () {
     sessions: [] as SessionView[],
     settings: undefined as Settings | undefined,
     metrics: undefined as MetricsStatus | undefined,
+    /** project rules; undefined when the server has none (older servers) */
+    projectRules: undefined as ProjectRule[] | undefined,
     update: undefined as UpdateStatus | undefined,
     updatePhase: 'idle' as UpdatePhase,
     /** the server's startup; undefined until known (older servers never say) */
@@ -182,13 +184,14 @@ async function loadOptional<T> (path: string): Promise<T | undefined> {
 /** refresh reloads everything; sessions also arrive over the WebSocket. */
 export async function refresh () {
   try {
-    const [sessions, settings, info, metrics, update, startup] = await Promise.all([
+    const [sessions, settings, info, metrics, update, startup, rules] = await Promise.all([
       transport.request<SessionView[] | null>('GET', 'sessions'),
       transport.request<Settings>('GET', 'settings'),
       loadOptional<Info>('info'),
       loadOptional<MetricsStatus>('metrics'),
       loadOptional<UpdateStatus>('update'),
       loadOptional<Startup>('startup'),
+      loadOptional<ProjectRule[] | null>('projects'),
     ])
     if (startup) setStartup(startup)
     state.sessions = sessions ?? []
@@ -196,6 +199,7 @@ export async function refresh () {
     if (info) state.info = info
     if (metrics) state.metrics = metrics
     if (update) setUpdate(update)
+    if (rules !== undefined) state.projectRules = rules ?? []
     state.error = ''
     state.authError = false
   } catch (err) {
@@ -305,6 +309,7 @@ export function onEvent (e: ServerEvent) {
       break
     case 'update': setUpdate(e.data); break
     case 'metrics': state.metrics = e.data; break
+    case 'projects': state.projectRules = e.data ?? []; break
   }
 }
 
@@ -398,6 +403,27 @@ export async function cancelPlan (key: string): Promise<boolean> {
   const s = state.sessions.find(x => x.key === key)
   if (s?.plan) s.plan = { ...s.plan, state: 'cancelled' }
   toast('info', `Stopped keeping ${titleOf(key)} warm`)
+  return true
+}
+
+/** setProjectRule keeps every session of project warm for hours, or indefinitely. */
+export async function setProjectRule (project: string, keep: { hours: number } | { indefinite: true }): Promise<boolean> {
+  const r = await act('Could not keep the project warm', () =>
+    transport.request<ProjectRule>('PUT', 'projects', { project, ...keep }))
+  if (!r) return false
+  state.projectRules = [...(state.projectRules ?? []).filter(x => x.project !== r.project), r]
+  toast('success', `Keeping every session in ${baseName(project)} warm`)
+  return true
+}
+
+export async function removeProjectRule (project: string): Promise<boolean> {
+  const ok = await act('Could not stop keeping the project warm', async () => {
+    await transport.request<unknown>('DELETE', `projects?project=${enc(project)}`)
+    return true
+  })
+  if (!ok) return false
+  state.projectRules = (state.projectRules ?? []).filter(x => x.project !== project)
+  toast('info', `Stopped keeping ${baseName(project)} warm`)
   return true
 }
 

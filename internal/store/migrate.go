@@ -138,6 +138,16 @@ ALTER TABLE pings ADD COLUMN harness TEXT NOT NULL DEFAULT '';
 ALTER TABLE pings ADD COLUMN model TEXT NOT NULL DEFAULT '';
 ALTER TABLE pings ADD COLUMN context_tokens INTEGER NOT NULL DEFAULT 0;
 `},
+	{4, `
+CREATE TABLE project_rules (
+	project    TEXT    PRIMARY KEY,
+	hours      REAL    NOT NULL DEFAULT 0,
+	indefinite INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL
+);
+ALTER TABLE plans ADD COLUMN project TEXT NOT NULL DEFAULT '';
+CREATE INDEX plans_key ON plans(key, id);
+`},
 }
 
 // SchemaVersion returns the highest applied migration.

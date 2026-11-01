@@ -70,6 +70,9 @@ func (h *handler) ws(w http.ResponseWriter, r *http.Request) {
 		!send(model.Event{Type: "sessions", Data: nonNil(h.opts.Service.Sessions())}) {
 		return
 	}
+	if p, ok := h.opts.Service.(model.Projects); ok && !send(model.Event{Type: "projects", Data: nonNil(p.ProjectRules())}) {
+		return
+	}
 
 	pingErr := make(chan error, 1)
 	go func() { pingErr <- h.keepalive(ctx, c) }()

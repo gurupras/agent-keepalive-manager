@@ -43,3 +43,13 @@ type Service interface {
 	// fresh "sessions" snapshot on the next scan.
 	Subscribe() (<-chan Event, func())
 }
+
+// Projects is implemented by services that keep whole projects warm (see
+// ProjectRule). Changes are published as "projects" events.
+type Projects interface {
+	ProjectRules() []ProjectRule
+	// SetProjectRule adds or changes the rule of r.Project.
+	SetProjectRule(ctx context.Context, r ProjectRule) (ProjectRule, error)
+	// RemoveProjectRule removes the rule and cancels the plans it started.
+	RemoveProjectRule(ctx context.Context, project string) error
+}

@@ -20,9 +20,38 @@ type fakeService struct {
 	lastFrom time.Time
 	since    time.Time
 	calls    []string
+	rules    []model.ProjectRule
 }
 
-var _ model.Service = (*fakeService)(nil)
+var (
+	_ model.Service  = (*fakeService)(nil)
+	_ model.Projects = (*fakeService)(nil)
+)
+
+func (f *fakeService) ProjectRules() []model.ProjectRule {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]model.ProjectRule(nil), f.rules...)
+}
+
+func (f *fakeService) SetProjectRule(_ context.Context, r model.ProjectRule) (model.ProjectRule, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rules = append(f.rules, r)
+	return r, nil
+}
+
+func (f *fakeService) RemoveProjectRule(_ context.Context, project string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, r := range f.rules {
+		if r.Project == project {
+			f.rules = append(f.rules[:i], f.rules[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: no rule for %s", model.ErrNotFound, project)
+}
 
 func newFakeService(keys ...string) *fakeService {
 	f := &fakeService{

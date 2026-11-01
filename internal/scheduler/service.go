@@ -63,7 +63,7 @@ func (s *Service) StartPlan(ctx context.Context, key string, hours float64) (mod
 	if math.IsNaN(hours) || hours <= 0 || hours > s.settings.MaxHours {
 		return model.Plan{}, fmt.Errorf("%w: hours must be in (0, %g]", model.ErrInvalid, s.settings.MaxHours)
 	}
-	return s.start(ctx, key, hours, false)
+	return s.start(ctx, key, hours, false, "")
 }
 
 // KeepIndefinitely starts a rolling plan, or turns the session's plan into
@@ -83,11 +83,11 @@ func (s *Service) KeepIndefinitely(ctx context.Context, key string) (model.Plan,
 		s.rebuildViews(now)
 		return pr.Plan.Plan, nil
 	}
-	return s.start(ctx, key, 0, true)
+	return s.start(ctx, key, 0, true, "")
 }
 
-// start requires s.mu.
-func (s *Service) start(ctx context.Context, key string, hours float64, indefinite bool) (model.Plan, error) {
+// start requires s.mu. project is set when a project rule starts the plan.
+func (s *Service) start(ctx context.Context, key string, hours float64, indefinite bool, project string) (model.Plan, error) {
 	now := s.now()
 	sess, err := s.reachable(key)
 	if err != nil {
@@ -98,7 +98,8 @@ func (s *Service) start(ctx context.Context, key string, hours float64, indefini
 	}
 	win := s.window(sess)
 	p := store.Plan{
-		Plan:      model.Plan{Key: key, PID: sess.PID, StartedAt: now, State: model.PlanActive, Indefinite: indefinite},
+		Plan: model.Plan{Key: key, PID: sess.PID, StartedAt: now, State: model.PlanActive, Indefinite: indefinite,
+			Project: project},
 		ProcStart: sess.ProcStart, BaseFrom: sess.LastCall, BaseContext: sess.ContextTokens, BaseModel: sess.Model,
 	}
 	if indefinite {
@@ -126,7 +127,7 @@ func (s *Service) start(ctx context.Context, key string, hours float64, indefini
 	if !p.WaitWarm && !sess.LastCall.IsZero() {
 		pr.NextPing = sess.LastCall.Add(pricing.Interval(ttl, s.margin()))
 	}
-	s.log.Info("scheduler: plan started", "plan", p.ID, "key", key, "hours", p.Hours, "indefinite", indefinite)
+	s.log.Info("scheduler: plan started", "plan", p.ID, "key", key, "hours", p.Hours, "indefinite", indefinite, "project", project)
 	s.persist(ctx, pr)
 	s.publish("plan", pr.Plan.Plan)
 	s.rebuildViews(now)

@@ -33,6 +33,9 @@ The token is what keeps other local users and other programs out: the server bin
 | `DELETE /api/sessions/{key}/plan` | | 204 |
 | `POST /api/sessions/{key}/ping` | | `PingRecord` |
 | `GET /api/sessions/{key}/pings?limit=50` | | `PingRecord[]` |
+| `GET /api/projects` | | `ProjectRule[]`: `{project, hours?, indefinite?, createdAt}` |
+| `PUT /api/projects` | `{project, hours}` or `{project, indefinite: true}` | `ProjectRule`: keeps every session of the project (its `project` path) warm with that plan, as sessions come and go. Plans the rule already started take the new setting from now. |
+| `DELETE /api/projects?project=` | | 204; the plans the rule started are cancelled |
 | `GET /api/ledger?from=&to=` | | `{entries: LedgerEntry[], totals: Totals}`; `from`/`to` RFC 3339, optional |
 | `GET /api/missed?since=` | | `Missed`; `since` defaults to 7 days ago |
 | `GET /api/settings` | | `Settings` |
@@ -113,7 +116,8 @@ Text frames, one JSON `Event` (`{type, data}`) each, server → client:
 | `hello` | `{version, info: Info, startup}` — first frame |
 | `startup` | `{ready, step}` — each step of the server's first scan, then `ready: true` once |
 | `sessions` | `SessionView[]` — full snapshot; sent right after `hello` and after every scan that changed anything |
-| `plan` | `Plan` |
+| `plan` | `Plan`; `project` is set when a project rule started it |
+| `projects` | `ProjectRule[]` — sent after `sessions` on connect and whenever a rule changes |
 | `ping` | `PingRecord` |
 | `ledger` | `LedgerEntry` |
 | `settings` | `Settings` |

@@ -464,3 +464,25 @@ func TestStartupRoute(t *testing.T) {
 		t.Fatalf("a service without a startup is ready: %+v", st)
 	}
 }
+
+func TestProjectRoutes(t *testing.T) {
+	e := newEnv(t, nil)
+	if rs := decodeBody[[]model.ProjectRule](t, e.do("GET", "/api/projects", "", nil)); len(rs) != 0 {
+		t.Fatalf("rules = %+v", rs)
+	}
+	for _, body := range []string{`{}`, `{"project":"/p"}`, `{"project":"/p","hours":2,"indefinite":true}`, `{"project":"/p","hours":-1}`, `{"project":"/p","extra":1}`} {
+		wantStatus(t, e.do("PUT", "/api/projects", body, nil), 400)
+	}
+	w := e.do("PUT", "/api/projects", `{"project":"/p","hours":4}`, nil)
+	wantStatus(t, w, 200)
+	if r := decodeBody[model.ProjectRule](t, w); r.Project != "/p" || r.Hours != 4 || r.Indefinite {
+		t.Fatalf("rule = %+v", r)
+	}
+	wantStatus(t, e.do("PUT", "/api/projects", `{"project":"/q","indefinite":true}`, nil), 200)
+	if rs := decodeBody[[]model.ProjectRule](t, e.do("GET", "/api/projects", "", nil)); len(rs) != 2 || !rs[1].Indefinite {
+		t.Fatalf("rules = %+v", rs)
+	}
+	wantStatus(t, e.do("DELETE", "/api/projects", "", nil), 400)
+	wantStatus(t, e.do("DELETE", "/api/projects?project=%2Fp", "", nil), 204)
+	wantStatus(t, e.do("DELETE", "/api/projects?project=%2Fp", "", nil), 404)
+}
