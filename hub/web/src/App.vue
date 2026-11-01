@@ -49,11 +49,22 @@ function emptyTables (): Record<Dimension, BreakdownRow[] | null> {
 }
 
 let controller: AbortController | undefined
+let relogin: Promise<void> | undefined
+let reloggedIn = false // once per page, in case the cookie does not stick
 
 function failed (e: unknown, signal: AbortSignal) {
   if (signal.aborted) return
   if (e instanceof api.Unauthorized) {
-    needToken.value = true
+    const token = api.savedToken()
+    if (!token || (reloggedIn && !relogin)) {
+      needToken.value = true
+      return
+    }
+    // Sign in again with the remembered token; every panel that failed
+    // waits on the same attempt.
+    reloggedIn = true
+    relogin ??= api.login(token).then(onLogin, () => { needToken.value = true })
+      .finally(() => { relogin = undefined })
     return
   }
   error.value = (e as Error).message

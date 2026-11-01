@@ -96,7 +96,7 @@ agent-keepalive-hub --listen :8080 --data-dir /var/lib/agent-keepalive-hub
 | `--database-url` / `HUB_DATABASE_URL` | | `postgres://…` to use Postgres instead of SQLite |
 | `--base-path` / `HUB_BASE_PATH` | `/` | serve under a path, e.g. `/hub` |
 | `--ingest-token` / `HUB_INGEST_TOKEN` | | require `Authorization: Bearer <token>` on reports (clients: `metrics.token` in the admin config, or `AGENT_KEEPALIVE_METRICS_TOKEN`) |
-| `--dashboard` / `HUB_DASHBOARD` | `public` | `public`, `token` (needs `HUB_DASHBOARD_TOKEN`; the dashboard asks for it) or `off` |
+| `--dashboard` / `HUB_DASHBOARD` | `public` | `public`, `token` (needs `HUB_DASHBOARD_TOKEN`; the dashboard asks for it once and remembers it in the browser, under the localStorage key `agent-keepalive-hub.token`, until Sign out) or `off` |
 | `--trust-proxy` / `HUB_TRUST_PROXY` | `false` | use `X-Forwarded-For` for rate limiting (never stored) |
 | `--retention-days` / `HUB_RETENTION_DAYS` | `730` | reports older than this are deleted |
 | `--max-daily-usd` / `HUB_MAX_DAILY_USD` | `2000` | refuse (400) a report whose `avoidedUsd` adds up to more than this; `0` is no cap |

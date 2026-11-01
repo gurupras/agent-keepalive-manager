@@ -156,7 +156,28 @@ export function session (signal?: AbortSignal): Promise<Session> {
   return get('v1/session', {}, signal)
 }
 
-/** login trades the dashboard token for a session cookie. */
+// The dashboard token, remembered in this browser so a lost or expired
+// session cookie signs in again without asking.
+const TOKEN_KEY = 'agent-keepalive-hub.token'
+
+export function savedToken (): string {
+  try {
+    return window.localStorage.getItem(TOKEN_KEY) ?? ''
+  } catch {
+    return '' // storage blocked
+  }
+}
+
+function saveToken (token: string) {
+  try {
+    if (token) window.localStorage.setItem(TOKEN_KEY, token)
+    else window.localStorage.removeItem(TOKEN_KEY)
+  } catch {
+    // storage blocked
+  }
+}
+
+/** login trades the dashboard token for a session cookie, and remembers it. */
 export async function login (token: string): Promise<void> {
   const res = await fetch('v1/login', {
     method: 'POST',
@@ -164,10 +185,16 @@ export async function login (token: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token }),
   })
-  if (res.status === 401) throw new Unauthorized()
+  if (res.status === 401) {
+    if (token === savedToken()) saveToken('')
+    throw new Unauthorized()
+  }
   if (!res.ok) throw new Error(await errorText(res))
+  saveToken(token)
 }
 
+/** logout ends the session and forgets the remembered token. */
 export async function logout (): Promise<void> {
+  saveToken('')
   await fetch('v1/logout', { method: 'POST', credentials: 'same-origin' })
 }
