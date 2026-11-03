@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import CostTimeline from './CostTimeline.vue'
-import { warmHours } from '../cacheMath'
+import { scenario as s, money, duration } from '../cacheMath'
 </script>
 
 <template>
   <section class="home-pitch">
-    <h2>Cheaper for {{ Math.floor(warmHours) }} hours straight</h2>
+    <h2>Cheaper for {{ duration(s.breakEvenHours) }} straight</h2>
     <p class="lede">
-      Every ping reads the cache at a twentieth of the input price and resets its timer.
-      Letting it expire means writing the whole context again at twice the input price.
+      A ping reads the cache for {{ money(s.pingCost) }} and resets its timer.
+      Letting it expire means writing the whole context again, for {{ money(s.rewriteCost) }}.
       So pings stay cheaper than one rebuild for a long time, and plans stop on their own when they no longer are.
     </p>
     <CostTimeline />

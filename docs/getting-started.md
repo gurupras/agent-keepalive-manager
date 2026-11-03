@@ -8,7 +8,7 @@ Every turn of a long agent conversation resends the whole context. Providers cac
 
 For a session with a large context, that one re-write can cost more than a long run of tiny "Reply only: pong" turns that each read the cache and reset its timer. agent-keepalive sends those turns for you, just before the cache would expire, and only for as long as it pays off.
 
-Take Claude Opus 5.5 with a 500k-token context on the 1-hour cache. A ping reads 500k tokens at $0.20 per million: 10¢. Coming back cold writes them at $8 per million: $4. One re-write costs as much as 40 reads, so 39 pings, one every 55 minutes, plus your first prompt back still cost no more than coming back cold. That is about 36 hours. The ratio of the write price to the read price sets the number of pings, whatever the context size; the context size only scales the dollars.
+Take Claude Opus 5.5 with a 500k-token context on the 1-hour cache. A ping reads 500k tokens at $0.20 per million: 10¢. Coming back cold writes them at $8 per million: $4. One re-write costs as much as 40 reads, so 39 pings, one every 55 minutes, plus your first prompt back cost the same as coming back cold. So keeping it warm is cheaper for the first 35¾ hours away. The ratio of the write price to the read price sets the number of pings, whatever the context size; the context size only scales the dollars.
 
 <CostTimeline />
 
