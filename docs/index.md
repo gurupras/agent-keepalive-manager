@@ -5,8 +5,8 @@ titleTemplate: Keep your coding agents' prompt caches warm
 
 hero:
   name: agent-keepalive
-  text: Come back to a warm cache.
-  tagline: Keeps the prompt caches of your Claude Code and Codex CLI sessions warm while you step away, so returning to a long conversation reads the cache instead of paying to write it again.
+  text: A ping costs 10¢. A cold cache costs $4.
+  tagline: Step away from a long Claude Code or Codex session and its prompt cache expires. Your next prompt pays to write the whole context again. agent-keepalive sends a tiny ping just before that happens, so you come back to a warm cache.
   image:
     src: /favicon.svg
     alt: agent-keepalive

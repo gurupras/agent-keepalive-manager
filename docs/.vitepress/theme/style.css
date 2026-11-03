@@ -27,6 +27,13 @@
   --vp-home-hero-name-background: linear-gradient(120deg, #f7931e 10%, #ffd25a 50%, #7fd1c7 100%);
 }
 
+/* The dark/light switch cross-fades (see index.ts). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 300ms;
+  animation-timing-function: ease-in-out;
+}
+
 .screenshot {
   display: block;
   margin: 48px auto 0;
