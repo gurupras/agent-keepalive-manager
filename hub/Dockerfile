@@ -8,7 +8,7 @@ RUN npm ci --no-audit --no-fund
 COPY hub/web/ ./
 RUN npm run build
 
-FROM golang:1.26-alpine AS go
+FROM golang:1.27-alpine AS go
 ARG VERSION=dev
 WORKDIR /src
 ENV CGO_ENABLED=0
