@@ -208,7 +208,8 @@ func TestProxy(t *testing.T) {
 	if ev := readEvent(t, ctx, c); ev.Type != "hello" {
 		t.Fatalf("%+v", ev)
 	}
-	readEvent(t, ctx, c)
+	readEvent(t, ctx, c) // sessions
+	readEvent(t, ctx, c) // projects
 	holder.svc.publish(model.Event{Type: "plan", Data: model.Plan{ID: 1}})
 	if ev := readEvent(t, ctx, c); ev.Type != "plan" {
 		t.Fatalf("%+v", ev)

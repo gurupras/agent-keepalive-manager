@@ -3,6 +3,7 @@ package scheduler
 import (
 	"errors"
 	"math"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,17 +15,17 @@ func TestProjectRuleChecks(t *testing.T) {
 	for _, r := range []model.ProjectRule{
 		{Project: "", Hours: 1},
 		{Project: "rel/path", Hours: 1},
-		{Project: "/p"},
-		{Project: "/p", Hours: -1},
-		{Project: "/p", Hours: math.NaN()},
-		{Project: "/p", Hours: 37},
-		{Project: "/p", Hours: 2, Indefinite: true},
+		{Project: proj},
+		{Project: proj, Hours: -1},
+		{Project: proj, Hours: math.NaN()},
+		{Project: proj, Hours: 37},
+		{Project: proj, Hours: 2, Indefinite: true},
 	} {
 		if _, err := h.svc.SetProjectRule(bg, r); !errors.Is(err, model.ErrInvalid) {
 			t.Errorf("%+v: %v", r, err)
 		}
 	}
-	if err := h.svc.RemoveProjectRule(bg, "/p"); !errors.Is(err, model.ErrNotFound) {
+	if err := h.svc.RemoveProjectRule(bg, proj); !errors.Is(err, model.ErrNotFound) {
 		t.Errorf("remove missing: %v", err)
 	}
 }
@@ -42,12 +43,12 @@ func TestProjectRuleKeepsSessionsWarm(t *testing.T) {
 	h.src.put(mute)
 	h.tickAt(time.Minute)
 
-	r, err := h.svc.SetProjectRule(bg, model.ProjectRule{Project: "/p/", Indefinite: true})
-	if err != nil || r.Project != "/p" {
+	r, err := h.svc.SetProjectRule(bg, model.ProjectRule{Project: proj + string(filepath.Separator), Indefinite: true})
+	if err != nil || r.Project != proj {
 		t.Fatalf("set = %+v, %v", r, err)
 	}
 	p := h.plan(key)
-	if p == nil || !p.Indefinite || p.Project != "/p" {
+	if p == nil || !p.Indefinite || p.Project != proj {
 		t.Fatalf("plan = %+v", p)
 	}
 	if h.plan("claude:o") != nil || h.plan("claude:m") != nil {
@@ -56,10 +57,10 @@ func TestProjectRuleKeepsSessionsWarm(t *testing.T) {
 
 	h.addSession("claude:s2", 200)
 	h.tickAt(2 * time.Minute)
-	if p := h.plan("claude:s2"); p == nil || p.Project != "/p" {
+	if p := h.plan("claude:s2"); p == nil || p.Project != proj {
 		t.Fatalf("new session's plan = %+v", p)
 	}
-	if rs := h.svc.ProjectRules(); len(rs) != 1 || rs[0].Project != "/p" {
+	if rs := h.svc.ProjectRules(); len(rs) != 1 || rs[0].Project != proj {
 		t.Fatalf("rules = %+v", rs)
 	}
 }
@@ -71,7 +72,7 @@ func TestProjectRuleRespectsEndedPlans(t *testing.T) {
 	h.addSession(key, 100)
 	h.addSession("claude:s2", 200)
 	h.tickAt(2 * time.Hour) // both caches already cold: the plans wait
-	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: "/p", Hours: 1}))
+	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: proj, Hours: 1}))
 	if err := h.svc.CancelPlan(bg, key); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,7 @@ func TestProjectRuleRespectsEndedPlans(t *testing.T) {
 	h.at(3*time.Hour + 32*time.Minute)
 	h.returnNow("claude:s2", 0)
 	h.tick()
-	if p := h.plan("claude:s2"); p == nil || p.Project != "/p" {
+	if p := h.plan("claude:s2"); p == nil || p.Project != proj {
 		t.Fatalf("plan after a prompt = %+v", p)
 	}
 	if h.plan(key) != nil {
@@ -100,7 +101,7 @@ func TestProjectRuleRespectsEndedPlans(t *testing.T) {
 	}
 
 	// Setting the rule again is a new opt-in: the cancelled one starts too.
-	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: "/p", Hours: 1}))
+	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: proj, Hours: 1}))
 	if h.plan(key) == nil {
 		t.Fatal("rule set again did not start the cancelled session")
 	}
@@ -114,7 +115,7 @@ func TestProjectRuleChangeAndRemove(t *testing.T) {
 	h.addSession("claude:s2", 200)
 	h.tickAt(time.Minute)
 	own := must(t)(h.svc.StartPlan(bg, "claude:s2", 2))
-	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: "/p", Hours: 1}))
+	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: proj, Hours: 1}))
 	if p := h.plan(key); p == nil || p.Indefinite {
 		t.Fatalf("plan = %+v", p)
 	}
@@ -124,15 +125,15 @@ func TestProjectRuleChangeAndRemove(t *testing.T) {
 	if rs := h.svc.ProjectRules(); len(rs) != 1 || rs[0].Hours != 1 {
 		t.Fatalf("rules after restart = %+v", rs)
 	}
-	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: "/p", Indefinite: true}))
-	if p := h.plan(key); p == nil || !p.Indefinite || p.Project != "/p" {
+	must2(t)(h.svc.SetProjectRule(bg, model.ProjectRule{Project: proj, Indefinite: true}))
+	if p := h.plan(key); p == nil || !p.Indefinite || p.Project != proj {
 		t.Fatalf("changed plan = %+v", p)
 	}
 	if p := h.plan("claude:s2"); p == nil || p.Indefinite || p.ID != own.ID {
 		t.Fatalf("own plan = %+v", p)
 	}
 
-	if err := h.svc.RemoveProjectRule(bg, "/p"); err != nil {
+	if err := h.svc.RemoveProjectRule(bg, proj); err != nil {
 		t.Fatal(err)
 	}
 	if h.plan(key) != nil || h.plan("claude:s2") == nil {

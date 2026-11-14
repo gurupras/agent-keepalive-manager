@@ -488,7 +488,7 @@ func TestRule7SavedNeedsCacheHit(t *testing.T) {
 			if !e.IdleFrom.Equal(t0) || !e.EndedAt.Equal(t0.Add(c.back)) || e.ContextSize != ctxK+10 {
 				t.Fatalf("entry times/context = %+v", e)
 			}
-			if e.Title != "t" || e.Project != "/p" || e.Model != opus || e.Harness != model.Claude {
+			if e.Title != "t" || e.Project != proj || e.Model != opus || e.Harness != model.Claude {
 				t.Fatalf("entry labels = %+v", e)
 			}
 			if p := h.plan(key); p.State != model.PlanActive {

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"sync"
 	"testing"
@@ -347,12 +348,21 @@ func (h *harness) tickAt(d time.Duration) {
 
 const key = "claude:s1"
 
+// proj is the test sessions' project: an absolute path on every OS, since
+// project rules only take absolute paths.
+var proj = func() string {
+	if runtime.GOOS == "windows" {
+		return `C:\p`
+	}
+	return "/p"
+}()
+
 // session is an idle, reachable Opus 5.5 session with a 1h TTL whose last
 // call went out at t0 with 100k context.
 func session(k string, pid int) model.Session {
 	return model.Session{
 		Key: k, Harness: model.Claude, ID: k[len("claude:"):], PID: pid, ProcStart: "start", Title: "t",
-		Project: "/p", Model: opus, Status: model.StatusIdle, Reach: model.ReachSocket,
+		Project: proj, Model: opus, Status: model.StatusIdle, Reach: model.ReachSocket,
 		CacheTTL: model.Duration(time.Hour),
 	}
 }

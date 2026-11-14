@@ -384,6 +384,9 @@ func TestWebSocket(t *testing.T) {
 	if ev := readEvent(t, ctx, c); ev.Type != "sessions" {
 		t.Fatalf("second frame %+v", ev)
 	}
+	if ev := readEvent(t, ctx, c); ev.Type != "projects" {
+		t.Fatalf("third frame %+v", ev)
+	}
 	e.svc.publish(model.Event{Type: "plan", Data: model.Plan{ID: 7}})
 	if ev := readEvent(t, ctx, c); ev.Type != "plan" {
 		t.Fatalf("%+v", ev)
