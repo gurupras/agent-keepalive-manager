@@ -69,13 +69,15 @@ func Default() *Table {
 	t := &Table{Prices: []Price{
 		// Claude, newest first. A bare family pattern ("opus-5") must not
 		// swallow a point release ("opus-5-5"), hence the guards.
+		claude("Claude Fable 5.2", `fable-5-2`, 8, 40, 0.20),
+		claude("Claude Mythos 5.2", `mythos-5-2`, 8, 40, 0.20),
 		claude("Claude Fable 5.1", `fable-5-1`, 10, 50, 0.25),
 		claude("Claude Mythos 5.1", `mythos-5-1`, 10, 50, 0.25),
 		claude("Claude Fable 5", `fable-5($|-\d{8}|[^-0-9])`, 10, 50, 1.00),
 		claude("Claude Mythos 5", `mythos-5($|-\d{8}|[^-0-9])`, 10, 50, 1.00),
 		claude("Claude Opus 5.5", `opus-5-5`, 4, 20, 0.20),
 		claude("Claude Opus 5", `opus-5($|-\d{8}|[^-0-9])`, 5, 25, 0.50),
-		claude("Claude Sonnet 5.5", `sonnet-5-5`, 2, 10, 0.20),
+		claude("Claude Sonnet 5.5", `sonnet-5-5`, 2, 10, 0.10),
 		claude("Claude Sonnet 5", `sonnet-5($|-\d{8}|[^-0-9])`, 2, 10, 0.20),
 		claude("Claude Haiku 5.5", `haiku-5-5`, 0.10, 0.50, 0.01),
 		claude("Claude Opus 4.8", `opus-4-8`, 5, 25, 0.50),

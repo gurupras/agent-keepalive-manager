@@ -22,6 +22,8 @@ func TestLookup(t *testing.T) {
 		"claude-sonnet-5-5":                          "Claude Sonnet 5.5",
 		"claude-sonnet-5":                            "Claude Sonnet 5",
 		"claude-haiku-5-5":                           "Claude Haiku 5.5",
+		"claude-fable-5-2":                           "Claude Fable 5.2",
+		"claude-mythos-5-2":                          "Claude Mythos 5.2",
 		"claude-fable-5-1":                           "Claude Fable 5.1",
 		"claude-fable-5":                             "Claude Fable 5",
 		"claude-mythos-5-1":                          "Claude Mythos 5.1",

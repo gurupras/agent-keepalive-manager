@@ -24,8 +24,9 @@ export const harnesses: Harness[] = [
     cacheLabel: '1-hour cache',
     write: m => m.input * 2, // the 1-hour write is 2x input
     models: [
+      { id: 'fable-5-2', name: 'Fable 5.2', input: 8, output: 40, read: 0.2 },
       { id: 'opus-5-5', name: 'Opus 5.5', input: 4, output: 20, read: 0.2 },
-      { id: 'sonnet-5-5', name: 'Sonnet 5.5', input: 2, output: 10, read: 0.2 },
+      { id: 'sonnet-5-5', name: 'Sonnet 5.5', input: 2, output: 10, read: 0.1 },
       { id: 'haiku-5-5', name: 'Haiku 5.5', input: 0.1, output: 0.5, read: 0.01 },
     ],
   },
